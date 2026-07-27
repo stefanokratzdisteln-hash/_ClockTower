@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+test-results/
+playwright-report/
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "roles": {
+    "washerwoman": {
+      "summary": "在这里填写你有权使用的角色说明。",
+      "storytellerSteps": ["在这里填写你有权使用的说书人步骤。"]
+    }
+  }
+}
