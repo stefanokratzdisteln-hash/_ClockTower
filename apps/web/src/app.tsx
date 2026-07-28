@@ -183,12 +183,13 @@ export function App() {
     return (
       <main className="welcome-shell">
         <section className="create-room">
-          <div className="brand-mark">◈</div>
-          <p className="eyebrow">MULTIPLAYER STORYTELLER</p>
+          <img
+            className="welcome-cover"
+            src={USER_ASSETS.cover.path}
+            alt=""
+            aria-hidden="true"
+          />
           <h1>暗流涌动</h1>
-          <p className="muted">
-            服务端权威房间 · 玩家手机实时同步 · 可断线恢复
-          </p>
           <label>
             房间码
             <input
@@ -334,6 +335,8 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
     previousPhase.current = game.phase;
     if (game.phase === 'first_night' || game.phase === 'night') {
       setActiveTool('night');
+    } else if (game.phase === 'day_discussion') {
+      setActiveTool('grimoire');
     } else if (game.phase === 'game_over' || game.phase === 'review') {
       setActiveTool('review');
     }
@@ -368,6 +371,19 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const isResetShortcut =
+        event.key === 'F5' ||
+        ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r');
+      if (isResetShortcut) {
+        event.preventDefault();
+        void room
+          .releaseRoom()
+          .then(() => {
+            window.history.replaceState({}, '', window.location.pathname);
+          })
+          .catch((error: Error) => room.setError(error.message));
+        return;
+      }
       if (
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLSelectElement ||
@@ -375,6 +391,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
       ) {
         return;
       }
+      if (event.key.toLowerCase() === 'm') setActiveTool('grimoire');
       if (event.key.toLowerCase() === 'r') setActiveTool('roles');
       if (event.key.toLowerCase() === 'n') setActiveTool('night');
       if (event.key.toLowerCase() === 'h')
@@ -392,7 +409,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
   });
 
   return (
-    <main className="mp-shell" data-phase={game.phase}>
+    <main className="mp-shell" data-phase={game.phase} data-tool={activeTool}>
       <header className="mp-topbar">
         <div className="mp-brand">
           <span>◈</span>
@@ -434,7 +451,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
 
       <nav className="grimoire-toolbar" aria-label="魔典工具">
         {[
-          ['grimoire', '魔典'],
+          ['grimoire', '魔典 M'],
           ['roles', '角色能力表 R'],
           ['night', '夜晚顺序 N'],
           ['review', '复盘'],
@@ -516,6 +533,12 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
         </button>
       </nav>
 
+      {room.error && (
+        <div className="console-error" role="alert">
+          {room.error}
+        </div>
+      )}
+
       <section className="mp-hero">
         <div>
           <p className="eyebrow">
@@ -543,6 +566,12 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
       {activeTool === 'grimoire' && (
         <section className="mp-grid">
           <aside className="mp-panel roster-panel">
+            <div className="share-card">
+              <small>玩家加入地址</small>
+              <code>{playerLink}</code>
+              <ShareQr value={playerLink} />
+              <p>扫描二维码，或手动输入房间码与昵称加入。</p>
+            </div>
             <div className="panel-title">
               <div>
                 <p className="eyebrow">PLAYERS</p>
@@ -550,10 +579,11 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
               </div>
               <b>{aliveCount} 存活</b>
             </div>
-            {game.phase === 'lobby' && (
+            {(game.phase === 'lobby' || game.phase === 'setup_players') && (
               <div className="quick-add">
                 <input
-                  placeholder="玩家昵称"
+                  aria-label="手动添加玩家昵称"
+                  placeholder="输入玩家昵称"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   onKeyDown={(event) => {
@@ -564,6 +594,9 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
                   }}
                 />
                 <button
+                  type="button"
+                  aria-label="手动添加玩家"
+                  disabled={!name.trim()}
                   onClick={() => {
                     if (name.trim()) {
                       send({ type: 'ADD_PLAYER', name });
@@ -571,7 +604,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
                     }
                   }}
                 >
-                  ＋
+                  添加
                 </button>
               </div>
             )}
@@ -665,20 +698,15 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
                 <div className="empty-state">等待玩家通过手机加入</div>
               )}
             </div>
-            {game.phase === 'lobby' && !game.players.length && (
-              <button
-                className="secondary full"
-                onClick={() => send({ type: 'ADD_DEMO_PLAYERS' })}
-              >
-                载入 7 人演示阵容
-              </button>
-            )}
-            <div className="share-card">
-              <small>玩家加入地址</small>
-              <code>{playerLink}</code>
-              <ShareQr value={playerLink} />
-              <p>玩家会获得独立会话，只能看见自己的安全视图。</p>
-            </div>
+            {(game.phase === 'lobby' || game.phase === 'setup_players') &&
+              game.players.length < 7 && (
+                <button
+                  className="secondary full"
+                  onClick={() => send({ type: 'ADD_DEMO_PLAYERS' })}
+                >
+                  补足至 7 人测试阵容
+                </button>
+              )}
           </aside>
 
           <section className="mp-panel stage-panel">
@@ -689,9 +717,18 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
               </div>
               <span className="server-badge">服务端权威</span>
             </div>
-            <div className="seat-circle">
+            <div
+              className="seat-circle"
+              data-time={
+                game.phase === 'first_night' || game.phase === 'night'
+                  ? 'night'
+                  : 'day'
+              }
+            >
               <div className="circle-core">
                 <span>{game.phase.includes('night') ? '☾' : '☼'}</span>
+              </div>
+              <div className="stage-phase-label">
                 <strong>{PHASE_LABELS[game.phase]}</strong>
                 <small>{game.players.length} 名玩家</small>
               </div>
@@ -893,15 +930,6 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
                     确认处决
                   </button>
                 )}
-              {next && (
-                <button
-                  className="advance-button"
-                  disabled={!canAdvance}
-                  onClick={() => send({ type: 'ADVANCE_PHASE', to: next })}
-                >
-                  推进至 {PHASE_LABELS[next]} <span>→</span>
-                </button>
-              )}
             </div>
             {selectedPlayer && (
               <section className="player-inspector">
@@ -1107,6 +1135,15 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
           </section>
 
           <aside className="mp-panel intelligence-panel">
+            {next && (
+              <button
+                className="advance-button side-next-button"
+                disabled={!canAdvance}
+                onClick={() => send({ type: 'ADVANCE_PHASE', to: next })}
+              >
+                下一步 · {PHASE_LABELS[next]} <span>→</span>
+              </button>
+            )}
             <div className="panel-title">
               <div>
                 <p className="eyebrow">GAME HISTORY</p>

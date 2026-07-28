@@ -53,6 +53,21 @@ export function useRoomConnection() {
   const retryRef = useRef<number | undefined>(undefined);
   const shouldReconnect = useRef(true);
 
+  const applyServerMessage = useCallback((message: ServerMessage) => {
+    if (message.type === 'ERROR') {
+      setError(message.message);
+      return;
+    }
+    if (message.type !== 'SNAPSHOT') return;
+    if (message.payload.kind === 'storyteller') {
+      setGame(message.payload.state);
+      setSuggestions(message.payload.suggestions);
+      setOnlinePlayerIds(message.payload.onlinePlayerIds ?? []);
+    } else {
+      setPlayerView(message.payload.view as PlayerView);
+    }
+  }, []);
+
   const disconnect = useCallback(
     (forget = false) => {
       shouldReconnect.current = false;
@@ -99,19 +114,7 @@ export function useRoomConnection() {
         );
       };
       socket.onmessage = (event) => {
-        const message = JSON.parse(String(event.data)) as ServerMessage;
-        if (message.type === 'ERROR') {
-          setError(message.message);
-          return;
-        }
-        if (message.type !== 'SNAPSHOT') return;
-        if (message.payload.kind === 'storyteller') {
-          setGame(message.payload.state);
-          setSuggestions(message.payload.suggestions);
-          setOnlinePlayerIds(message.payload.onlinePlayerIds ?? []);
-        } else {
-          setPlayerView(message.payload.view as PlayerView);
-        }
+        applyServerMessage(JSON.parse(String(event.data)) as ServerMessage);
       };
       socket.onclose = (event) => {
         if (!shouldReconnect.current) return;
@@ -127,7 +130,7 @@ export function useRoomConnection() {
         );
       };
     },
-    [],
+    [applyServerMessage],
   );
 
   useEffect(() => {
@@ -186,22 +189,33 @@ export function useRoomConnection() {
 
   const send = useCallback(
     (command: StorytellerCommand | PlayerCommand) => {
+      const message: ClientMessage = {
+        type: 'COMMAND',
+        requestId: crypto.randomUUID(),
+        command,
+      };
+      if (game) {
+        if (!roomId || !token) {
+          setError('说书人会话尚未建立。');
+          return;
+        }
+        setError('');
+        void post<ServerMessage>(
+          `/api/rooms/${encodeURIComponent(roomId)}/command?token=${encodeURIComponent(token)}`,
+          message,
+        )
+          .then(applyServerMessage)
+          .catch((error: Error) => setError(error.message));
+        return;
+      }
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         setError('连接尚未恢复，请稍后再试。');
         return;
       }
-      const message: ClientMessage = {
-        type: 'COMMAND',
-        requestId: crypto.randomUUID(),
-        ...(role === 'storyteller' && game
-          ? { expectedVersion: game.version }
-          : {}),
-        command,
-      };
       socket.send(JSON.stringify(message));
     },
-    [game, role],
+    [applyServerMessage, game, roomId, token],
   );
 
   const exportGame = useCallback(async () => {
@@ -234,6 +248,22 @@ export function useRoomConnection() {
     [roomId, token],
   );
 
+  const releaseRoom = useCallback(async () => {
+    if (role !== 'storyteller' || !roomId || !token) {
+      throw new Error('说书人会话尚未建立。');
+    }
+    const response = await fetch(
+      `${API_BASE}/api/rooms/${encodeURIComponent(roomId)}?token=${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+    );
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      message?: string;
+    };
+    if (!response.ok) throw new Error(payload.message ?? '释放房间失败');
+    disconnect(true);
+  }, [disconnect, role, roomId, token]);
+
   return {
     role,
     roomId,
@@ -250,6 +280,7 @@ export function useRoomConnection() {
     send,
     exportGame,
     importGame,
+    releaseRoom,
     disconnect,
   };
 }

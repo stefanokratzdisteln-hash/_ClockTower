@@ -1206,6 +1206,317 @@ button:disabled {
   }
 }
 
+/* Storyteller blueprint layout ------------------------------------------ */
+.mp-shell[data-tool='grimoire'] {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.mp-shell[data-tool='grimoire'] > .mp-hero {
+  display: none;
+}
+
+.mp-shell[data-tool='grimoire'] .mp-grid {
+  grid-template-columns:
+    clamp(250px, 16vw, 310px)
+    minmax(520px, 1fr)
+    clamp(280px, 18vw, 350px);
+  height: calc(100dvh - 124px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mp-shell[data-tool='grimoire'] .roster-panel,
+.mp-shell[data-tool='grimoire'] .intelligence-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  background-color: #0d0909;
+  background-image:
+    linear-gradient(rgba(8, 10, 13, 0.68), rgba(8, 10, 13, 0.78)),
+    var(--asset-sidebar-pattern, none);
+  background-position: center top;
+  background-size: cover;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-panel {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  background-color: rgba(7, 10, 14, 0.22);
+  background-image:
+    radial-gradient(
+      circle at center,
+      rgba(7, 10, 14, 0.08),
+      rgba(7, 10, 14, 0.66)
+    ),
+    var(--asset-overall-background, none);
+  background-position: center;
+  background-size: cover;
+}
+
+.mp-shell[data-tool='grimoire'] .roster-panel .share-card {
+  order: -2;
+  flex: 0 0 auto;
+  margin: 0 0 18px;
+  padding: 14px;
+  text-align: center;
+  background: rgba(7, 12, 18, 0.82);
+}
+
+.mp-shell[data-tool='grimoire'] .share-card .room-qr {
+  width: min(190px, 100%);
+  margin: 12px auto;
+}
+
+.mp-shell[data-tool='grimoire'] .share-card code {
+  text-align: left;
+}
+
+.mp-shell[data-tool='grimoire'] .roster-panel > .panel-title {
+  order: -1;
+}
+
+.mp-shell[data-tool='grimoire'] .mp-roster {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-panel > .panel-title {
+  position: relative;
+  z-index: 4;
+}
+
+.mp-shell[data-tool='grimoire'] .seat-circle {
+  --asset-current-time: var(--asset-day-marker, none);
+  width: min(68vh, 74vw, 760px);
+  max-width: calc(100% - 48px);
+  flex: 0 0 auto;
+  margin: auto;
+  border-color: rgba(207, 171, 99, 0.25);
+  background: radial-gradient(
+    circle,
+    rgba(18, 24, 31, 0.18),
+    rgba(5, 8, 12, 0.34) 64%,
+    transparent 65%
+  );
+}
+
+.mp-shell[data-tool='grimoire'] .seat-circle[data-time='night'] {
+  --asset-current-time: var(--asset-night-marker, none);
+}
+
+.mp-shell[data-tool='grimoire'] .seat-circle::before {
+  inset: -5% auto auto -7%;
+  width: 22%;
+  height: 22%;
+  border: 0;
+  border-radius: 0;
+  background-image: var(--asset-current-time);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.65));
+  opacity: 0.9;
+}
+
+.mp-shell[data-tool='grimoire'] .seat-circle::after {
+  inset: 12%;
+  border-color: rgba(167, 183, 196, 0.16);
+}
+
+.mp-shell[data-tool='grimoire'] .circle-core::before {
+  content: none;
+}
+
+.mp-shell[data-tool='grimoire'] .circle-core {
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.mp-shell[data-tool='grimoire'] .circle-core::after {
+  inset: -105%;
+  background-image: var(--asset-clocktower, none);
+  background-size: contain;
+  opacity: 0.92;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-phase-label {
+  position: absolute;
+  z-index: 4;
+  top: 18%;
+  left: -8%;
+  display: flex;
+  width: 24%;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem;
+  color: #f3ead7;
+  text-align: center;
+  text-shadow: 0 2px 5px #000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-phase-label strong {
+  font:
+    700 13px 'Shippori Mincho',
+    serif;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-phase-label small {
+  color: #a9b4bd;
+  font-size: 8px;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-actions {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.mp-shell[data-tool='grimoire'] .stage-panel > .error {
+  flex: 0 0 auto;
+  margin-top: 10px;
+}
+
+.side-next-button {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  color: #f6e4b4;
+  border-color: #735d32;
+  background: rgba(121, 91, 42, 0.22);
+}
+
+.mp-shell[data-tool='grimoire'] .intelligence-panel .game-log {
+  max-height: none;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1050px) {
+  .mp-shell[data-tool='grimoire'] {
+    height: auto;
+    overflow: visible;
+  }
+
+  .mp-shell[data-tool='grimoire'] .mp-grid {
+    grid-template-columns: 230px minmax(0, 1fr);
+    height: auto;
+    min-height: calc(100dvh - 124px);
+    overflow: visible;
+  }
+
+  .mp-shell[data-tool='grimoire'] .intelligence-panel {
+    grid-column: 1 / -1;
+    max-height: 440px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mp-shell[data-tool='grimoire'] .mp-grid {
+    display: flex;
+  }
+
+  .mp-shell[data-tool='grimoire'] .stage-panel {
+    order: -2;
+    min-height: 70vh;
+  }
+
+  .mp-shell[data-tool='grimoire'] .intelligence-panel {
+    order: -1;
+    max-height: none;
+  }
+
+  .mp-shell[data-tool='grimoire'] .seat-circle {
+    width: min(88vw, 520px);
+    max-width: 100%;
+  }
+}
+
+/* Hand-drawn town-square artwork ----------------------------------------- */
+body {
+  background-color: #090708;
+  background-image:
+    linear-gradient(rgba(7, 7, 9, 0.18), rgba(7, 7, 9, 0.32)),
+    var(--asset-overall-background, none);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+.seat-circle {
+  --asset-current-time: var(--asset-day-marker, none);
+  background-image: radial-gradient(
+    circle,
+    rgba(48, 63, 77, 0.18),
+    rgba(8, 11, 15, 0.18) 58%,
+    transparent 70%
+  );
+  background-position: center;
+  background-size: cover;
+}
+
+.seat-circle[data-time='night'] {
+  --asset-current-time: var(--asset-night-marker, none);
+}
+
+.circle-core {
+  isolation: isolate;
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+}
+
+.circle-core::before,
+.circle-core::after {
+  position: absolute;
+  inset: -18%;
+  z-index: -2;
+  content: '';
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.circle-core::before {
+  background-image: var(--asset-current-time);
+  background-size: contain;
+  filter: drop-shadow(0 0 16px rgba(232, 183, 91, 0.2));
+  opacity: 0.72;
+}
+
+.circle-core::after {
+  inset: -25%;
+  z-index: -1;
+  background-image: var(--asset-clocktower, none);
+  background-size: auto 150%;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.72));
+}
+
+.circle-core > span {
+  display: none;
+}
+
+.circle-core strong,
+.circle-core small {
+  position: relative;
+  z-index: 1;
+  padding: 0.08rem 0.28rem;
+  border-radius: 0.2rem;
+  background: rgba(8, 10, 13, 0.68);
+  text-shadow: 0 1px 4px #000;
+}
+
 /* Full grimoire tools ----------------------------------------------------- */
 .mp-shell {
   background-image:
@@ -1270,6 +1581,17 @@ button:disabled {
   color: #fff4d7;
   border-color: #c9a45e;
   background: rgba(201, 164, 94, 0.15);
+}
+
+.console-error {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  padding: 0.65rem 1rem;
+  color: #ffd7da;
+  border-bottom: 1px solid #8f3f47;
+  background: #4a2026;
+  text-align: center;
 }
 
 .toolbar-spacer {
@@ -1930,11 +2252,13 @@ button:disabled {
 }
 .quick-add {
   display: grid;
-  grid-template-columns: 1fr 38px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   margin: 16px 0 9px;
 }
 .quick-add button {
+  min-width: 58px;
+  padding-inline: 10px;
   color: #181209;
   background: var(--gold);
   border-radius: 3px;
@@ -2548,5 +2872,90 @@ button:disabled {
   select,
   input {
     min-height: 44px;
+  }
+}
+
+/* Keep the custom artwork above the legacy workspace theme declarations. */
+.welcome-cover {
+  display: block;
+  width: min(430px, 92vw);
+  height: clamp(310px, 40vh, 430px);
+  margin: -4.5rem auto -4.4rem;
+  object-fit: contain;
+  transform: translateX(-22px);
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.48));
+}
+
+.welcome-cover + h1 {
+  margin-top: 0;
+}
+
+.welcome-shell,
+.player-shell,
+.mp-shell,
+.mp-shell[data-phase='first_night'],
+.mp-shell[data-phase='night'],
+.mp-shell[data-phase='game_over'],
+.mp-shell[data-phase='review'] {
+  background-color: transparent;
+  background-image:
+    linear-gradient(rgba(7, 10, 15, 0.68), rgba(7, 10, 15, 0.82)),
+    var(--asset-overall-background, none);
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+.circle-player > span,
+.circle-player > span.good,
+.circle-player > span.evil,
+.mp-roster .avatar,
+.mp-roster .avatar.good,
+.mp-roster .avatar.evil {
+  border: 0;
+  border-radius: 0;
+  color: #f6edf9;
+  background-color: transparent;
+  background-image: var(--asset-alive-marker, none);
+  background-repeat: no-repeat;
+  background-position: 48% 47%;
+  background-size: 149% 122%;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.64));
+  text-shadow: 0 1px 5px #13081b;
+}
+
+.circle-player > span {
+  width: 72px;
+  height: 88px;
+}
+
+.circle-player.dead > span,
+.circle-player.dead > span.good,
+.circle-player.dead > span.evil,
+.mp-roster article:has(> i.dead) .avatar {
+  color: #191515;
+  background-color: transparent;
+  background-image: var(--asset-dead-marker, none);
+  background-position: 49% 54%;
+  background-size: 178% 145%;
+  filter: grayscale(0.12) drop-shadow(0 4px 5px rgba(0, 0, 0, 0.72));
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.4);
+}
+
+.circle-player.dead > span::after {
+  content: none;
+}
+
+@media (max-width: 720px) {
+  .welcome-cover {
+    width: min(340px, 94vw);
+    height: min(340px, 38vh);
+    margin-block: -3.4rem -3.2rem;
+    transform: translateX(-12px);
+  }
+
+  .circle-player > span {
+    width: 58px;
+    height: 72px;
   }
 }

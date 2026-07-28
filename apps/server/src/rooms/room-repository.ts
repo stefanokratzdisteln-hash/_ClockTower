@@ -20,6 +20,7 @@ export type PersistedRoom = {
 export interface RoomRepository {
   load(roomId: string): PersistedRoom | undefined;
   save(room: PersistedRoom): void;
+  delete(roomId: string): void;
   close(): void;
 }
 
@@ -65,6 +66,10 @@ export class SqliteRoomRepository implements RoomRepository {
         room.state.version,
         room.state.updatedAt,
       );
+  }
+
+  delete(roomId: string): void {
+    this.database.prepare('DELETE FROM rooms WHERE id = ?').run(roomId);
   }
 
   close(): void {

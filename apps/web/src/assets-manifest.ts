@@ -1,8 +1,81 @@
 import type { AssetManifest } from '@clocktower/shared';
 
+import aliveMarkerPath from '../../../public/the_alive.png?url';
+import backgroundPath from '../../../public/background.png?url';
+import clocktowerPath from '../../../public/clocktower.png?url';
+import coverPath from '../../../public/cover.png?url';
+import dayMarkerPath from '../../../public/day.png?url';
+import deadMarkerPath from '../../../public/the_dead.png?url';
+import nightMarkerPath from '../../../public/night.png?url';
+import patternPath from '../../../public/pattern.png?url';
+
 const ROOT = '/assets/user';
 
 export const USER_ASSETS = {
+  cover: {
+    id: 'cover',
+    kind: 'overlay',
+    path: coverPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  overallBackground: {
+    id: 'overall-background',
+    kind: 'background',
+    path: backgroundPath,
+    width: 2560,
+    height: 1440,
+    optional: true,
+  },
+  clocktower: {
+    id: 'clocktower',
+    kind: 'overlay',
+    path: clocktowerPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  dayMarker: {
+    id: 'day-marker',
+    kind: 'overlay',
+    path: dayMarkerPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  nightMarker: {
+    id: 'night-marker',
+    kind: 'overlay',
+    path: nightMarkerPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  aliveMarker: {
+    id: 'alive-marker',
+    kind: 'overlay',
+    path: aliveMarkerPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  deadMarker: {
+    id: 'dead-marker',
+    kind: 'overlay',
+    path: deadMarkerPath,
+    width: 2048,
+    height: 2048,
+    optional: true,
+  },
+  sidebarPattern: {
+    id: 'sidebar-pattern',
+    kind: 'background',
+    path: patternPath,
+    width: 3000,
+    height: 12000,
+    optional: true,
+  },
   lobbyBackground: {
     id: 'lobby-background',
     kind: 'background',
@@ -137,6 +210,14 @@ export async function installAvailableUserAssets(): Promise<void> {
   const preferred = (slot: { path: string; mobilePath?: string }) =>
     mobile && slot.mobilePath ? slot.mobilePath : slot.path;
   const pairs = [
+    ['--asset-cover', USER_ASSETS.cover.path],
+    ['--asset-overall-background', USER_ASSETS.overallBackground.path],
+    ['--asset-clocktower', USER_ASSETS.clocktower.path],
+    ['--asset-day-marker', USER_ASSETS.dayMarker.path],
+    ['--asset-night-marker', USER_ASSETS.nightMarker.path],
+    ['--asset-alive-marker', USER_ASSETS.aliveMarker.path],
+    ['--asset-dead-marker', USER_ASSETS.deadMarker.path],
+    ['--asset-sidebar-pattern', USER_ASSETS.sidebarPattern.path],
     ['--asset-bg-lobby', preferred(USER_ASSETS.lobbyBackground)],
     ['--asset-bg-day', preferred(USER_ASSETS.dayBackground)],
     ['--asset-bg-night', preferred(USER_ASSETS.nightBackground)],

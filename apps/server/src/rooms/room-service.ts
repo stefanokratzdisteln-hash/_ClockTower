@@ -189,6 +189,22 @@ export class RoomService {
     return session;
   }
 
+  release(requestedId: string, token: string): void {
+    const room = this.getRoom(requestedId);
+    const session = room.sessions.get(tokenHash(token));
+    if (!session || session.role !== 'storyteller') {
+      throw new RoomServiceError('UNAUTHORIZED', '只有说书人可以释放房间。');
+    }
+
+    const connections = [...room.connections];
+    room.connections.clear();
+    this.rooms.delete(room.state.id);
+    this.repository?.delete(room.state.id);
+    for (const connection of connections) {
+      connection.socket.close?.(1000, '房间已由说书人释放');
+    }
+  }
+
   connect(
     requestedId: string,
     token: string,
@@ -348,6 +364,7 @@ export class RoomService {
       case 'ADD_DEMO_PLAYERS': {
         let next = state;
         for (const name of DEMO_NAMES) {
+          if (next.players.length >= 7) break;
           next = addPlayer(next, {
             id: `p-${randomUUID().slice(0, 8)}`,
             name,

@@ -360,3 +360,91 @@ test('移动端玩家加入页可用且暴露 PWA manifest', async ({ page }, te
       .evaluate((body) => body.scrollWidth <= window.innerWidth),
   ).toBe(true);
 });
+
+test('F5 释放当前对局、返回根页面并允许复用房间码', async ({
+  page,
+  request,
+}, testInfo) => {
+  const roomId = `E2E-RESET-${testInfo.project.name}`;
+  await page.goto('/');
+  await page.locator('.create-room input').fill(roomId);
+  await page.locator('.create-room button.primary').click();
+  await expect(page.locator('.mp-shell')).toBeVisible();
+
+  await page.keyboard.press('F5');
+
+  await expect(page.locator('.create-room')).toBeVisible();
+  await expect(page).toHaveURL('http://127.0.0.1:4173/');
+  const reused = await request.post('http://127.0.0.1:3000/api/rooms', {
+    data: { roomId },
+  });
+  expect(reused.ok()).toBeTruthy();
+});
+
+test('说书人可以手动添加玩家并载入 7 人测试阵容', async ({
+  page,
+}, testInfo) => {
+  const createFromRoot = async (suffix: string) => {
+    await page.goto('/');
+    await page
+      .locator('.create-room input')
+      .fill(`E2E-LOBBY-${suffix}-${testInfo.project.name}`);
+    await page.locator('.create-room button.primary').click();
+    await expect(page.locator('.mp-shell')).toBeVisible();
+  };
+
+  await createFromRoot('MANUAL');
+  await page.locator('.quick-add input').fill('手动玩家');
+  await page.locator('.quick-add button').click();
+  await expect(page.locator('.mp-roster')).toContainText('手动玩家');
+
+  await page.getByRole('button', { name: /补足至 7 人测试阵容/ }).click();
+  await expect(page.locator('.mp-roster article')).toHaveCount(7);
+
+  await page.getByRole('button', { name: /角色能力表 R/ }).click();
+  await page.keyboard.press('m');
+  await expect(page.getByRole('button', { name: /魔典 M/ })).toHaveClass(
+    /active/,
+  );
+
+  if (testInfo.project.name === 'chromium') {
+    const layout = await page.evaluate(() => {
+      const box = (selector: string) => {
+        const rect = document.querySelector(selector)!.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      };
+      return {
+        roster: box('.roster-panel'),
+        stage: box('.stage-panel'),
+        logPanel: box('.intelligence-panel'),
+        qr: box('.share-card'),
+        add: box('.quick-add'),
+        next: box('.side-next-button'),
+        log: box('.game-log'),
+      };
+    });
+    expect(layout.roster.x).toBeLessThan(layout.stage.x);
+    expect(layout.stage.x).toBeLessThan(layout.logPanel.x);
+    expect(layout.qr.y).toBeLessThan(layout.add.y);
+    expect(layout.next.y).toBeLessThan(layout.log.y);
+  }
+});
+
+test('玩家不扫码也可以输入房间码和昵称手动加入', async ({
+  page,
+  context,
+}, testInfo) => {
+  const roomId = `E2E-MANUAL-JOIN-${testInfo.project.name}`;
+  await page.goto('/');
+  await page.locator('.create-room input').fill(roomId);
+  await page.locator('.create-room button.primary').click();
+  await expect(page.locator('.mp-shell')).toBeVisible();
+
+  const playerPage = await context.newPage();
+  await playerPage.goto(`/?room=${roomId}&player=1`);
+  await playerPage.locator('.join-card input').nth(1).fill('手动加入玩家');
+  await playerPage.locator('.join-card .player-primary').click();
+
+  await expect(playerPage.locator('.player-topbar')).toBeVisible();
+  await expect(page.locator('.mp-roster')).toContainText('手动加入玩家');
+});

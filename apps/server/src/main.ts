@@ -41,6 +41,40 @@ export async function buildApp(roomService = new RoomService()) {
     },
   );
 
+  app.delete<{
+    Params: { roomId: string };
+    Querystring: { token?: string };
+  }>('/api/rooms/:roomId', async (request, reply) => {
+    try {
+      roomService.release(request.params.roomId, request.query.token ?? '');
+      return { ok: true };
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post<{
+    Params: { roomId: string };
+    Querystring: { token?: string };
+    Body: ClientMessage;
+  }>('/api/rooms/:roomId/command', async (request, reply) => {
+    try {
+      const token = request.query.token ?? '';
+      const message = request.body;
+      if (
+        message?.type !== 'COMMAND' ||
+        !message.requestId ||
+        !message.command
+      ) {
+        throw new RoomServiceError('INVALID_MESSAGE', '消息格式无效。');
+      }
+      roomService.handleMessage(request.params.roomId, token, message);
+      return roomService.getSnapshot(request.params.roomId, token);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   app.get<{ Params: { roomId: string }; Querystring: { token?: string } }>(
     '/api/rooms/:roomId/snapshot',
     async (request, reply) => {

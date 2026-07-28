@@ -92,6 +92,23 @@ describe('SQLite room persistence', () => {
     }
     service.close();
   });
+
+  it('releases a room permanently so its code can be reused', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'clocktower-sqlite-'));
+    directories.push(directory);
+    const path = join(directory, 'rooms.sqlite');
+    const service = new RoomService(
+      new ReadOnlyAiService(),
+      new SqliteRoomRepository(path),
+    );
+    const firstSession = service.create('REUSABLE');
+
+    service.release(firstSession.roomId, firstSession.token);
+    const secondSession = service.create('REUSABLE');
+
+    expect(secondSession.roomId).toBe('REUSABLE');
+    service.close();
+  });
 });
 
 describe('night workflow', () => {
