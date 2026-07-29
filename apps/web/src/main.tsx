@@ -3,13 +3,16 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './app.js';
 import { installAvailableUserAssets } from './assets-manifest.js';
+import { LanguageProvider } from './i18n.js';
 import './styles/index.css';
 
 void installAvailableUserAssets();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </StrictMode>,
 );
 

@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   TROUBLE_BREWING_ROLE_DEFINITIONS,
   type PlayerView,
 } from '@clocktower/rules-engine';
+
+import { DawnCinematic } from '../components/dawn-cinematic.js';
+import { EndingCinematic } from '../components/ending-cinematic.js';
+import { RoomAudioToggle } from '../components/room-audio-toggle.js';
+import { LanguageToggle } from '../i18n.js';
 
 const PHASE_LABELS: Record<PlayerView['phase'], string> = {
   lobby: '等待入座',
@@ -62,11 +67,31 @@ export function PlayerPortal(props: PlayerPortalProps) {
   const [name, setName] = useState('');
   const [nomineeId, setNomineeId] = useState('');
   const [nightTargets, setNightTargets] = useState<string[]>([]);
+  const [dawnCinematicOpen, setDawnCinematicOpen] = useState(false);
+  const nightStepId = props.view?.nightRequest?.stepId;
+  const currentPhase = props.view?.phase;
+  const previousPhase = useRef(currentPhase);
+
+  useEffect(() => {
+    setNightTargets(props.view?.nightRequest?.selectedTargetIds ?? []);
+  }, [nightStepId]);
+
+  useEffect(() => {
+    const priorPhase = previousPhase.current;
+    previousPhase.current = currentPhase;
+    if (
+      currentPhase === 'day_discussion' &&
+      (priorPhase === 'first_night' || priorPhase === 'night')
+    ) {
+      setDawnCinematicOpen(true);
+    }
+  }, [currentPhase]);
 
   if (!props.view) {
     return (
       <main className="player-shell join-shell">
         <section className="join-card">
+          <LanguageToggle />
           <div className="player-sigil">◎</div>
           <p className="player-kicker">PLAYER ACCESS</p>
           <h1>加入钟楼</h1>
@@ -130,7 +155,11 @@ export function PlayerPortal(props: PlayerPortalProps) {
             <small>房间 {view.roomId}</small>
           </span>
         </div>
-        <button onClick={props.onLeave}>退出房间</button>
+        <div className="player-topbar-actions">
+          <RoomAudioToggle />
+          <LanguageToggle />
+          <button onClick={props.onLeave}>退出房间</button>
+        </div>
       </header>
 
       <section className="player-content">
@@ -180,6 +209,43 @@ export function PlayerPortal(props: PlayerPortalProps) {
                 {view.self.alive ? '● 存活' : '† 死亡'}
               </span>
             </div>
+            {view.evilTeamInfo && (
+              <section className="evil-team-info">
+                <small>EVIL TEAM · 仅你可见</small>
+                {view.evilTeamInfo.demon && (
+                  <p>
+                    <strong>恶魔</strong>
+                    <span>
+                      {view.evilTeamInfo.demon.seatIndex + 1} ·{' '}
+                      {view.evilTeamInfo.demon.name}
+                    </span>
+                  </p>
+                )}
+                <p>
+                  <strong>爪牙</strong>
+                  <span>
+                    {view.evilTeamInfo.minions
+                      .map(
+                        (minion) => `${minion.seatIndex + 1} · ${minion.name}`,
+                      )
+                      .join(' / ') || '无'}
+                  </span>
+                </p>
+                {view.evilTeamInfo.demonBluffs.length > 0 && (
+                  <p>
+                    <strong>安全伪装</strong>
+                    <span>
+                      {view.evilTeamInfo.demonBluffs
+                        .map(
+                          (characterId) =>
+                            ROLE_NAMES[characterId] ?? characterId,
+                        )
+                        .join(' · ')}
+                    </span>
+                  </p>
+                )}
+              </section>
+            )}
             {!view.self.alive && (
               <small>
                 {view.self.deadVoteAvailable
@@ -193,35 +259,163 @@ export function PlayerPortal(props: PlayerPortalProps) {
             <p className="player-kicker">AVAILABLE ACTION</p>
             {view.nightRequest ? (
               <div className="player-action night-player-action">
-                <h2>提交夜间目标</h2>
-                <p>你的选择只会发送给说书人，最终结果由说书人确认。</p>
-                <div className="night-player-targets">
-                  {view.nightRequest.legalTargets.map((player) => (
-                    <button
-                      className={
-                        nightTargets.includes(player.id) ? 'selected' : ''
-                      }
-                      key={player.id}
-                      onClick={() =>
-                        setNightTargets((current) =>
-                          current.includes(player.id)
-                            ? current.filter((id) => id !== player.id)
-                            : [...current, player.id],
-                        )
-                      }
-                    >
-                      {player.seatIndex + 1} · {player.name}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  className="player-primary"
-                  onClick={() =>
-                    props.onNightAction(view.nightRequest!.stepId, nightTargets)
-                  }
-                >
-                  私密提交给说书人
-                </button>
+                <h2>
+                  {view.nightRequest.interaction === 'choose'
+                    ? '选择夜间目标'
+                    : view.nightRequest.interaction === 'grimoire'
+                      ? '查看魔典'
+                      : '等待说书人信息'}
+                </h2>
+                <p>
+                  {view.nightRequest.interaction === 'choose'
+                    ? `请选择 ${
+                        view.nightRequest.minTargets ===
+                        view.nightRequest.maxTargets
+                          ? view.nightRequest.minTargets
+                          : `${view.nightRequest.minTargets}–${view.nightRequest.maxTargets}`
+                      } 名玩家。你的选择只会发送给说书人。`
+                    : view.nightRequest.interaction === 'grimoire'
+                      ? '查看完整魔典后，确认已阅读并通知说书人。'
+                      : '你无需选择目标。说书人确认结果后，会私密显示在下方提示中。'}
+                </p>
+                {view.spyGrimoire && (
+                  <section className="spy-grimoire" aria-label="间谍魔典">
+                    <header>
+                      <div>
+                        <small>SPY EYES ONLY</small>
+                        <h3>说书人的魔典</h3>
+                      </div>
+                      <span>仅本次唤醒可见</span>
+                    </header>
+                    <p className="spy-warning">
+                      以下是当前魔典中的身份与状态。请勿让其他玩家看到屏幕。
+                    </p>
+                    <div className="spy-seat-grid">
+                      {view.spyGrimoire.seats.map((seat) => {
+                        const statusLabels = [
+                          !seat.status.alive ? '死亡' : '',
+                          seat.status.drunk ? '醉酒' : '',
+                          seat.status.poisoned ? '中毒' : '',
+                          seat.status.protected ? '受保护' : '',
+                          !seat.status.alive && seat.status.deadVoteAvailable
+                            ? '保留死亡票'
+                            : '',
+                        ].filter(Boolean);
+                        const markers = [
+                          ...statusLabels,
+                          ...seat.effects,
+                          ...seat.reminders,
+                        ];
+                        return (
+                          <article
+                            className={seat.alignment}
+                            key={seat.playerId}
+                          >
+                            <span className="spy-seat-number">
+                              {seat.seatIndex + 1}
+                            </span>
+                            <div>
+                              <strong>{seat.playerName}</strong>
+                              <b>
+                                {ROLE_NAMES[seat.characterId] ??
+                                  seat.characterId}
+                              </b>
+                              <small>
+                                {seat.alignment === 'good'
+                                  ? '善良阵营'
+                                  : '邪恶阵营'}
+                              </small>
+                            </div>
+                            <div className="spy-markers">
+                              {markers.length ? (
+                                markers.map((marker, index) => (
+                                  <i key={`${marker}-${index}`}>{marker}</i>
+                                ))
+                              ) : (
+                                <i className="clear">无状态标记</i>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {view.spyGrimoire.demonBluffs.length > 0 && (
+                      <div className="spy-bluffs">
+                        <strong>恶魔伪装身份</strong>
+                        <span>
+                          {view.spyGrimoire.demonBluffs
+                            .map(
+                              (characterId) =>
+                                ROLE_NAMES[characterId] ?? characterId,
+                            )
+                            .join(' · ')}
+                        </span>
+                      </div>
+                    )}
+                  </section>
+                )}
+                {view.nightRequest.interaction === 'choose' && (
+                  <>
+                    <div className="night-target-progress">
+                      已选择 {nightTargets.length} /{' '}
+                      {view.nightRequest.maxTargets}
+                    </div>
+                    <div className="night-player-targets">
+                      {view.nightRequest.legalTargets.map((player) => {
+                        const selected = nightTargets.includes(player.id);
+                        return (
+                          <button
+                            className={selected ? 'selected' : ''}
+                            disabled={
+                              !selected &&
+                              nightTargets.length >=
+                                view.nightRequest!.maxTargets
+                            }
+                            key={player.id}
+                            onClick={() =>
+                              setNightTargets((current) =>
+                                current.includes(player.id)
+                                  ? current.filter((id) => id !== player.id)
+                                  : [...current, player.id],
+                              )
+                            }
+                          >
+                            {player.seatIndex + 1} · {player.name}
+                            {!player.alive ? '（已死亡）' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                {view.nightRequest.submitted &&
+                  view.nightRequest.interaction !== 'information' && (
+                    <div className="player-success" role="status">
+                      已私密提交，说书人端已收到。
+                    </div>
+                  )}
+                {view.nightRequest.interaction !== 'information' && (
+                  <button
+                    className="player-primary"
+                    disabled={
+                      view.nightRequest.interaction === 'choose' &&
+                      (nightTargets.length < view.nightRequest.minTargets ||
+                        nightTargets.length > view.nightRequest.maxTargets)
+                    }
+                    onClick={() =>
+                      props.onNightAction(
+                        view.nightRequest!.stepId,
+                        nightTargets,
+                      )
+                    }
+                  >
+                    {view.nightRequest.submitted
+                      ? '重新提交给说书人'
+                      : view.nightRequest.interaction === 'grimoire'
+                        ? '确认已查看并通知说书人'
+                        : '私密提交给说书人'}
+                  </button>
+                )}
               </div>
             ) : view.permissions.nominate.allowed ? (
               <div className="player-action">
@@ -311,7 +505,7 @@ export function PlayerPortal(props: PlayerPortalProps) {
           )}
         </section>
 
-        {view.review && (
+        {view.phase === 'review' && view.review && (
           <section className="review-panel">
             <p className="player-kicker">OPEN REVIEW</p>
             <h2>身份公开复盘</h2>
@@ -335,6 +529,12 @@ export function PlayerPortal(props: PlayerPortalProps) {
           </section>
         )}
       </section>
+      {view.phase === 'game_over' && view.review?.winner && (
+        <EndingCinematic winner={view.review.winner} />
+      )}
+      {dawnCinematicOpen && (
+        <DawnCinematic onComplete={() => setDawnCinematicOpen(false)} />
+      )}
     </main>
   );
 }

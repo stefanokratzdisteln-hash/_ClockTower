@@ -56,6 +56,76 @@ describe('Trouble Brewing role distribution', () => {
       });
     }
   });
+
+  it('declares every player-facing night interaction explicitly', () => {
+    const byId = new Map(TROUBLE_BREWING_ROLES.map((role) => [role.id, role]));
+    expect(
+      Object.fromEntries(
+        [
+          'poisoner',
+          'fortune_teller',
+          'monk',
+          'ravenkeeper',
+          'butler',
+          'imp',
+        ].map((id) => [id, byId.get(id)?.abilityModel.targeting]),
+      ),
+    ).toEqual({
+      poisoner: {
+        minTargets: 1,
+        maxTargets: 1,
+        allowSelf: true,
+        alive: 'any',
+      },
+      fortune_teller: {
+        minTargets: 2,
+        maxTargets: 2,
+        allowSelf: true,
+        alive: 'any',
+      },
+      monk: {
+        minTargets: 1,
+        maxTargets: 1,
+        allowSelf: false,
+        alive: 'any',
+      },
+      ravenkeeper: {
+        minTargets: 1,
+        maxTargets: 1,
+        allowSelf: true,
+        alive: 'any',
+      },
+      butler: {
+        minTargets: 1,
+        maxTargets: 1,
+        allowSelf: false,
+        alive: 'any',
+      },
+      imp: {
+        minTargets: 1,
+        maxTargets: 1,
+        allowSelf: true,
+        alive: 'any',
+      },
+    });
+    expect(
+      [
+        'washerwoman',
+        'librarian',
+        'investigator',
+        'chef',
+        'empath',
+        'fortune_teller',
+        'undertaker',
+        'ravenkeeper',
+      ].every(
+        (id) =>
+          byId.get(id)?.abilityModel.playerResult === 'storyteller',
+      ),
+    ).toBe(true);
+    expect(byId.get('spy')?.abilityModel.playerResult).toBe('grimoire');
+    expect(byId.get('scarlet_woman')?.otherNightOrder).toBeNull();
+  });
 });
 
 describe('Trouble Brewing assignment validation', () => {

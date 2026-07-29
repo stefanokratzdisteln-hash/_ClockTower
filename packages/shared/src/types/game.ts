@@ -72,6 +72,8 @@ export type NightStep = {
   deathOutcome?: NightDeathOutcome;
   resultSummary?: string;
   storytellerNote?: string;
+  /** Set when the acting player has privately submitted this active step. */
+  playerSubmittedAt?: string;
   startedAt?: string;
   completedAt?: string;
 };

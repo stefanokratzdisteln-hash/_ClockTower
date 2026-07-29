@@ -183,6 +183,7 @@ export function addStatusEffect(
     kind: StatusEffectKind;
     label: string;
     sourceRoleId?: CharacterId;
+    sourcePlayerId?: PlayerId;
     expiresAt: StatusEffectExpiry;
   },
   context: GrimoireContext = {},
@@ -394,6 +395,7 @@ export function updateNightStep(
     deathOutcome?: NightDeathOutcome;
     resultSummary?: string;
     storytellerNote?: string;
+    playerSubmitted?: boolean;
   },
   context: GrimoireContext = {},
 ): GameState {
@@ -401,7 +403,7 @@ export function updateNightStep(
   if (!current) {
     throw new InvalidGrimoireActionError(`Unknown night step: ${input.stepId}`);
   }
-  if (input.targetIds && input.targetIds.length > 0) {
+  if (input.status !== 'skipped' && input.targetIds !== undefined) {
     const validation = validateNightAction(
       state,
       current.playerId,
@@ -436,6 +438,9 @@ export function updateNightStep(
           ...(input.storytellerNote === undefined
             ? {}
             : { storytellerNote: input.storytellerNote }),
+          ...(input.playerSubmitted
+            ? { playerSubmittedAt: now }
+            : {}),
           ...(input.status === 'active' && !step.startedAt
             ? { startedAt: now }
             : {}),
@@ -445,6 +450,44 @@ export function updateNightStep(
         }
       : step,
   );
+  const nightDeathPlayerId =
+    input.deathOutcome?.type === 'death'
+      ? input.deathOutcome.playerId
+      : undefined;
+  if (nightDeathPlayerId !== undefined) {
+    queue = queue.map((step) =>
+      step.playerId === nightDeathPlayerId && step.status === 'pending'
+        ? { ...step, status: 'skipped' as const, completedAt: now }
+        : step,
+    );
+  }
+  if (
+    input.status === 'completed' &&
+    nightDeathPlayerId !== undefined &&
+    state.assignments.find(
+      ({ playerId }) => playerId === nightDeathPlayerId,
+    )?.characterId === 'ravenkeeper' &&
+    !queue.some(
+      ({ playerId, characterId }) =>
+        playerId === nightDeathPlayerId && characterId === 'ravenkeeper',
+    )
+  ) {
+    const currentIndex = queue.findIndex(({ id }) => id === input.stepId);
+    const ravenkeeperStep = {
+      id: `${state.id}:night:${current.nightNumber}:ravenkeeper`,
+      nightNumber: current.nightNumber,
+      playerId: nightDeathPlayerId,
+      characterId: 'ravenkeeper',
+      order: 40,
+      status: 'pending' as const,
+      targetIds: [],
+    };
+    queue = [
+      ...queue.slice(0, currentIndex + 1),
+      ravenkeeperStep,
+      ...queue.slice(currentIndex + 1),
+    ];
+  }
   if (input.status === 'completed' || input.status === 'skipped') {
     const nextIndex = queue.findIndex(({ status }) => status === 'pending');
     if (nextIndex >= 0) {

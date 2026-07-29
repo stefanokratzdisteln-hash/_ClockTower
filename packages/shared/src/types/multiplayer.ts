@@ -66,6 +66,11 @@ export type StorytellerCommand =
       playerId: PlayerId;
       characterId: CharacterId;
     }
+  | {
+      type: 'SET_DRUNK_PERCEIVED_ROLE';
+      playerId: PlayerId;
+      characterId: CharacterId;
+    }
   | { type: 'SET_BLUFFS'; characterIds: CharacterId[] }
   | { type: 'CONFIRM_ALL_IDENTITIES' }
   | {

@@ -7,6 +7,7 @@ import {
   getCurrentNightActor,
   getNightOrder,
 } from '../selectors/night-order.js';
+import { selectPlayerView } from '../selectors/player-view.js';
 import { TROUBLE_BREWING_ROLES } from '../scripts/trouble-brewing.js';
 import {
   getLegalNightTargets,
@@ -94,24 +95,120 @@ describe('night order', () => {
       ),
     ).toEqual(['p1', 'p3']);
   });
+
+  it('matches the complete Trouble Brewing wake order without waking passive roles', () => {
+    const state = createInitialGameState('all-roles', 'trouble-brewing');
+    state.players = TROUBLE_BREWING_ROLES.map((role, seatIndex) => ({
+      id: `all-${role.id}`,
+      name: role.id,
+      seatIndex,
+      experience: 'regular',
+    }));
+    state.assignments = TROUBLE_BREWING_ROLES.map((role) =>
+      assignment(`all-${role.id}`, role.id),
+    );
+
+    state.phase = 'first_night';
+    expect(getNightOrder(state).map(({ characterId }) => characterId)).toEqual([
+      'poisoner',
+      'washerwoman',
+      'librarian',
+      'investigator',
+      'chef',
+      'empath',
+      'fortune_teller',
+      'butler',
+      'spy',
+    ]);
+
+    state.phase = 'night';
+    expect(getNightOrder(state).map(({ characterId }) => characterId)).toEqual([
+      'poisoner',
+      'monk',
+      'imp',
+      'undertaker',
+      'empath',
+      'fortune_teller',
+      'butler',
+      'spy',
+    ]);
+    expect(
+      getNightOrder(state, {
+        diedTonightPlayerIds: ['all-ravenkeeper'],
+      }).map(({ characterId }) => characterId),
+    ).toEqual([
+      'poisoner',
+      'monk',
+      'imp',
+      'ravenkeeper',
+      'undertaker',
+      'empath',
+      'fortune_teller',
+      'butler',
+      'spy',
+    ]);
+  });
+
+  it('wakes the Drunk as their configured out-of-play Townsfolk role', () => {
+    const state = nightState('first_night');
+    state.assignments[0] = {
+      ...state.assignments[0]!,
+      characterId: 'drunk',
+      effects: [
+        {
+          id: 'drunk-belief',
+          playerId: 'p1',
+          kind: 'custom',
+          label: '酒鬼伪装身份',
+          sourceRoleId: 'fortune_teller',
+          expiresAt: 'manual',
+          createdAt: state.createdAt,
+        },
+      ],
+    };
+
+    expect(
+      getNightOrder(state).find(({ playerId }) => playerId === 'p1'),
+    ).toMatchObject({
+      playerId: 'p1',
+      characterId: 'fortune_teller',
+    });
+    expect(selectPlayerView(state, 'p1').self).toMatchObject({
+      characterId: 'fortune_teller',
+      alignment: 'good',
+    });
+    expect(validateNightAction(state, 'p1', ['p1', 'p2'])).toEqual({
+      valid: true,
+    });
+  });
 });
 
 describe('night action validation', () => {
   it('calculates targets from abilityModel constraints', () => {
     const state = nightState('night');
-    expect(getLegalNightTargets(state, 'p4')).toEqual(['p1', 'p2', 'p3']);
+    expect(getLegalNightTargets(state, 'p4')).toEqual([
+      'p1',
+      'p2',
+      'p3',
+      'p5',
+    ]);
     expect(validateNightAction(state, 'p4', ['p1'])).toEqual({ valid: true });
+    expect(validateNightAction(state, 'p4', ['p5'])).toEqual({ valid: true });
     expect(validateNightAction(state, 'p4', ['p4']).valid).toBe(false);
     expect(validateNightAction(state, 'p1', ['p2', 'p3'])).toEqual({
+      valid: true,
+    });
+    expect(validateNightAction(state, 'p1', ['p1', 'p5'])).toEqual({
       valid: true,
     });
     expect(validateNightAction(state, 'p1', ['p2']).valid).toBe(false);
   });
 
-  it('rejects duplicate, dead, and out-of-phase targets', () => {
+  it('rejects duplicate, missing, and out-of-phase targets', () => {
     const state = nightState('night');
     expect(validateNightAction(state, 'p1', ['p2', 'p2']).valid).toBe(false);
-    expect(validateNightAction(state, 'p3', ['p5']).valid).toBe(false);
+    expect(validateNightAction(state, 'p3', []).valid).toBe(false);
+    expect(validateNightAction(state, 'p3', ['p5']).valid).toBe(true);
     expect(
       validateNightAction({ ...state, phase: 'day_discussion' }, 'p3', ['p1'])
         .valid,

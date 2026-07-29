@@ -87,6 +87,7 @@ export {
   autoAssignTroubleBrewingCharacters,
   autoAssignTroubleBrewingCharactersToGame,
   getTroubleBrewingDistribution,
+  getDrunkPerceivedRole,
   getTroubleBrewingRole,
   validateTroubleBrewingAssignments,
 } from './scripts/trouble-brewing.js';

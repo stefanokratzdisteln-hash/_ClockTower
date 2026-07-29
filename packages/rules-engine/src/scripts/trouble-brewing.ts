@@ -32,6 +32,7 @@ export type TroubleBrewingAbilityModel = Readonly<{
     allowSelf: boolean;
     alive: 'required' | 'any';
   }>;
+  playerResult?: 'storyteller' | 'grimoire';
   wakeCondition?: 'alive' | 'always' | 'diedTonight';
   setup?: Readonly<{
     outsiderDelta: number;
@@ -98,7 +99,7 @@ const placeholder = (
   timing: readonly TroubleBrewingAbilityTiming[],
   options: Pick<
     TroubleBrewingAbilityModel,
-    'setup' | 'targeting' | 'wakeCondition'
+    'playerResult' | 'setup' | 'targeting' | 'wakeCondition'
   > = {},
 ): TroubleBrewingAbilityModel => ({
   version: 1,
@@ -115,7 +116,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: 20,
     otherNightOrder: null,
-    abilityModel: placeholder(['firstNight']),
+    abilityModel: placeholder(['firstNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'librarian',
@@ -124,7 +127,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: 30,
     otherNightOrder: null,
-    abilityModel: placeholder(['firstNight']),
+    abilityModel: placeholder(['firstNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'investigator',
@@ -133,7 +138,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: 40,
     otherNightOrder: null,
-    abilityModel: placeholder(['firstNight']),
+    abilityModel: placeholder(['firstNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'chef',
@@ -142,7 +149,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: 50,
     otherNightOrder: null,
-    abilityModel: placeholder(['firstNight']),
+    abilityModel: placeholder(['firstNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'empath',
@@ -151,7 +160,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: 60,
     otherNightOrder: 60,
-    abilityModel: placeholder(['firstNight', 'otherNight']),
+    abilityModel: placeholder(['firstNight', 'otherNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'fortune_teller',
@@ -165,8 +176,9 @@ export const TROUBLE_BREWING_ROLES = [
         minTargets: 2,
         maxTargets: 2,
         allowSelf: true,
-        alive: 'required',
+        alive: 'any',
       },
+      playerResult: 'storyteller',
     }),
   },
   {
@@ -176,7 +188,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'good',
     firstNightOrder: null,
     otherNightOrder: 50,
-    abilityModel: placeholder(['otherNight']),
+    abilityModel: placeholder(['otherNight'], {
+      playerResult: 'storyteller',
+    }),
   },
   {
     id: 'monk',
@@ -190,7 +204,7 @@ export const TROUBLE_BREWING_ROLES = [
         minTargets: 1,
         maxTargets: 1,
         allowSelf: false,
-        alive: 'required',
+        alive: 'any',
       },
     }),
   },
@@ -209,6 +223,7 @@ export const TROUBLE_BREWING_ROLES = [
         allowSelf: true,
         alive: 'any',
       },
+      playerResult: 'storyteller',
     }),
   },
   {
@@ -259,7 +274,7 @@ export const TROUBLE_BREWING_ROLES = [
         minTargets: 1,
         maxTargets: 1,
         allowSelf: false,
-        alive: 'required',
+        alive: 'any',
       },
     }),
   },
@@ -302,7 +317,7 @@ export const TROUBLE_BREWING_ROLES = [
         minTargets: 1,
         maxTargets: 1,
         allowSelf: true,
-        alive: 'required',
+        alive: 'any',
       },
     }),
   },
@@ -313,7 +328,9 @@ export const TROUBLE_BREWING_ROLES = [
     alignment: 'evil',
     firstNightOrder: 90,
     otherNightOrder: 90,
-    abilityModel: placeholder(['firstNight', 'otherNight', 'passive']),
+    abilityModel: placeholder(['firstNight', 'otherNight', 'passive'], {
+      playerResult: 'grimoire',
+    }),
   },
   {
     id: 'scarlet_woman',
@@ -321,7 +338,7 @@ export const TROUBLE_BREWING_ROLES = [
     type: 'minion',
     alignment: 'evil',
     firstNightOrder: null,
-    otherNightOrder: 35,
+    otherNightOrder: null,
     abilityModel: placeholder(['otherNight', 'passive']),
   },
   {
@@ -347,7 +364,7 @@ export const TROUBLE_BREWING_ROLES = [
         minTargets: 1,
         maxTargets: 1,
         allowSelf: true,
-        alive: 'required',
+        alive: 'any',
       },
     }),
   },
@@ -375,6 +392,21 @@ export function getTroubleBrewingRole(
   characterId: CharacterId,
 ): TroubleBrewingRole | undefined {
   return ROLES_BY_ID.get(characterId);
+}
+
+export function getDrunkPerceivedRole(
+  assignment: Pick<Assignment, 'characterId' | 'effects'>,
+): TroubleBrewingRole | undefined {
+  if (assignment.characterId !== 'drunk') return undefined;
+  const perceivedCharacterId = (assignment.effects ?? []).find(
+    ({ kind, label, sourceRoleId }) =>
+      kind === 'custom' &&
+      label === '酒鬼伪装身份' &&
+      sourceRoleId !== undefined,
+  )?.sourceRoleId;
+  return perceivedCharacterId
+    ? getTroubleBrewingRole(perceivedCharacterId)
+    : undefined;
 }
 
 export function getTroubleBrewingDistribution(

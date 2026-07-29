@@ -3,7 +3,9 @@ import QRCode from 'qrcode';
 
 import {
   TROUBLE_BREWING_ROLE_DEFINITIONS,
+  getDrunkPerceivedRole,
   getLegalNightTargets,
+  getTroubleBrewingRole,
   type GameEvent,
   type GamePhase,
   type GameState,
@@ -11,6 +13,10 @@ import {
 import type { GameExport, StorytellerCommand } from '@clocktower/shared';
 
 import { USER_ASSETS } from './assets-manifest.js';
+import { DawnCinematic } from './components/dawn-cinematic.js';
+import { EndingCinematic } from './components/ending-cinematic.js';
+import { RoomAudioToggle } from './components/room-audio-toggle.js';
+import { LanguageToggle } from './i18n.js';
 import { PlayerPortal } from './pages/player-portal.js';
 import { useRoomConnection } from './stores/room-connection.js';
 
@@ -189,6 +195,7 @@ export function App() {
             alt=""
             aria-hidden="true"
           />
+          <LanguageToggle />
           <h1>暗流涌动</h1>
           <label>
             房间码
@@ -248,6 +255,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
     localStorage.getItem('clocktower:animations') !== 'off',
   );
   const [transitionSource, setTransitionSource] = useState('');
+  const [dawnCinematicOpen, setDawnCinematicOpen] = useState(false);
   const previousPhase = useRef(game.phase);
   const active = [...game.nominations]
     .reverse()
@@ -278,6 +286,17 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
   const next = NEXT_PHASE[game.phase];
   const playerLink = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(game.id)}&player=1`;
   const send = (command: StorytellerCommand) => room.send(command);
+  const advancePhase = (to: GamePhase) => {
+    if (
+      (game.phase === 'first_night' || game.phase === 'night') &&
+      to === 'day_discussion' &&
+      animationsEnabled
+    ) {
+      setDawnCinematicOpen(true);
+      return;
+    }
+    send({ type: 'ADVANCE_PHASE', to });
+  };
   const aliveCount =
     game.assignments.filter(({ status }) => status.alive).length ||
     game.players.length;
@@ -288,7 +307,16 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
   ));
   const canAdvance = useMemo(() => {
     if (game.phase === 'lobby') return game.players.length >= 5;
-    if (game.phase === 'assign_characters') return game.assignments.length > 0;
+    if (game.phase === 'assign_characters') {
+      return (
+        game.assignments.length === game.players.length &&
+        game.assignments.every(
+          (assignment) =>
+            assignment.characterId !== 'drunk' ||
+            getDrunkPerceivedRole(assignment) !== undefined,
+        )
+      );
+    }
     if (game.phase === 'nomination') return Boolean(active);
     if (game.phase === 'voting') return Boolean(resolved);
     if (game.phase === 'execution_resolution' && executionCandidate) {
@@ -350,16 +378,12 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
       game.phase === 'night' || game.phase === 'first_night'
         ? USER_ASSETS.nightfallAnimation.path
         : game.phase === 'day_discussion'
-          ? USER_ASSETS.dawnAnimation.path
+          ? ''
           : game.phase === 'nomination'
             ? USER_ASSETS.nominationAnimation.path
             : game.phase === 'execution_resolution'
               ? USER_ASSETS.executionAnimation.path
-              : game.phase === 'game_over'
-                ? game.result?.winningAlignment === 'evil'
-                  ? USER_ASSETS.evilWinAnimation.path
-                  : USER_ASSETS.goodWinAnimation.path
-                : '';
+              : '';
     if (source) {
       void fetch(source, { method: 'HEAD' })
         .then((response) => {
@@ -431,6 +455,8 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
           <strong>{game.id}</strong>
           <small>v{game.version}</small>
         </div>
+        <RoomAudioToggle />
+        <LanguageToggle />
         <button
           className="ghost"
           onClick={() => void navigator.clipboard.writeText(playerLink)}
@@ -1046,6 +1072,38 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
                         ))}
                       </select>
                     </label>
+                    {selectedAssignment.characterId === 'drunk' && (
+                      <label className="inspector-role-select">
+                        玩家认为自己是
+                        <select
+                          value={
+                            getDrunkPerceivedRole(selectedAssignment)?.id ?? ''
+                          }
+                          onChange={(event) =>
+                            event.target.value &&
+                            send({
+                              type: 'SET_DRUNK_PERCEIVED_ROLE',
+                              playerId: selectedPlayer.id,
+                              characterId: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">请选择不在场镇民</option>
+                          {TROUBLE_BREWING_ROLE_DEFINITIONS.filter(
+                            (definition) =>
+                              definition.type === 'townsfolk' &&
+                              !game.assignments.some(
+                                ({ characterId }) =>
+                                  characterId === definition.id,
+                              ),
+                          ).map((definition) => (
+                            <option key={definition.id} value={definition.id}>
+                              {definition.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <div className="token-list">
                       {game.effects
                         .filter(
@@ -1139,7 +1197,7 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
               <button
                 className="advance-button side-next-button"
                 disabled={!canAdvance}
-                onClick={() => send({ type: 'ADVANCE_PHASE', to: next })}
+                onClick={() => advancePhase(next)}
               >
                 下一步 · {PHASE_LABELS[next]} <span>→</span>
               </button>
@@ -1174,8 +1232,28 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
       )}
 
       {activeTool === 'roles' && <RoleLibrary />}
-      {activeTool === 'night' && <NightWorkbench game={game} send={send} />}
+      {activeTool === 'night' && (
+        <NightWorkbench
+          game={game}
+          send={send}
+          onDawn={() => advancePhase('day_discussion')}
+        />
+      )}
       {activeTool === 'review' && <ReviewWorkspace game={game} send={send} />}
+      {game.phase === 'game_over' && game.result && (
+        <EndingCinematic
+          winner={game.result.winningAlignment}
+          onContinue={() => send({ type: 'ADVANCE_PHASE', to: 'review' })}
+        />
+      )}
+      {dawnCinematicOpen && (
+        <DawnCinematic
+          onComplete={() => {
+            setDawnCinematicOpen(false);
+            send({ type: 'ADVANCE_PHASE', to: 'day_discussion' });
+          }}
+        />
+      )}
       {transitionSource && (
         <TransitionOverlay
           source={transitionSource}
@@ -1417,24 +1495,62 @@ function RoleLibrary() {
   );
 }
 
+function countAdjacentEvilPairs(game: GameState) {
+  const seatedPlayers = [...game.players].sort(
+    (left, right) => left.seatIndex - right.seatIndex,
+  );
+  if (seatedPlayers.length < 2) return 0;
+  const isEvil = (playerId: string) =>
+    game.assignments.find(({ playerId: id }) => id === playerId)?.alignment ===
+    'evil';
+  return seatedPlayers.reduce((pairs, player, index) => {
+    const nextPlayer = seatedPlayers[(index + 1) % seatedPlayers.length]!;
+    return pairs + (isEvil(player.id) && isEvil(nextPlayer.id) ? 1 : 0);
+  }, 0);
+}
+
 function NightWorkbench({
   game,
   send,
+  onDawn,
 }: {
   game: GameState;
   send: (command: StorytellerCommand) => void;
+  onDawn: () => void;
 }) {
   const active = game.nightQueue.find(({ status }) => status === 'active');
+  const legacyPlayerSubmission =
+    active?.resultSummary === '玩家已提交目标，等待说书人确认。';
+  const playerHasSubmitted =
+    Boolean(active?.playerSubmittedAt) || legacyPlayerSubmission;
   const [targetIds, setTargetIds] = useState<string[]>([]);
   const [resultSummary, setResultSummary] = useState('');
+  const [informationRolePlayerId, setInformationRolePlayerId] = useState('');
+  const [informationDecoyPlayerId, setInformationDecoyPlayerId] = useState('');
+  const [librarianNoOutsider, setLibrarianNoOutsider] = useState(false);
+  const [chefPairCount, setChefPairCount] = useState<number | null>(null);
   const [deathResolution, setDeathResolution] = useState('');
   const [newDemonPlayerId, setNewDemonPlayerId] = useState('');
   useEffect(() => {
     setTargetIds(active?.targetIds ?? []);
-    setResultSummary(active?.resultSummary ?? '');
+    setResultSummary(
+      legacyPlayerSubmission ? '' : (active?.resultSummary ?? ''),
+    );
+    setInformationRolePlayerId('');
+    setInformationDecoyPlayerId('');
+    setLibrarianNoOutsider(false);
+    setChefPairCount(
+      active?.characterId === 'chef' ? countAdjacentEvilPairs(game) : null,
+    );
     setDeathResolution('');
     setNewDemonPlayerId('');
-  }, [active?.id]);
+  }, [
+    active?.id,
+    active?.resultSummary,
+    active?.targetIds.join('|'),
+    legacyPlayerSubmission,
+    game,
+  ]);
   const legalTargets = active
     ? new Set(getLegalNightTargets(game, active.playerId))
     : new Set<string>();
@@ -1443,6 +1559,83 @@ function NightWorkbench({
         ({ id }) => id === active.characterId,
       )
     : undefined;
+  const ability = active
+    ? getTroubleBrewingRole(active.characterId)?.abilityModel
+    : undefined;
+  const targeting = ability?.targeting;
+  const guidedInformation =
+    active?.characterId === 'washerwoman'
+      ? {
+          roleType: 'townsfolk' as const,
+          label: '洗衣妇',
+          roleTypeLabel: '镇民',
+        }
+      : active?.characterId === 'librarian'
+        ? {
+            roleType: 'outsider' as const,
+            label: '图书管理员',
+            roleTypeLabel: '外来者',
+          }
+        : active?.characterId === 'investigator'
+          ? {
+              roleType: 'minion' as const,
+              label: '调查员',
+              roleTypeLabel: '爪牙',
+            }
+          : undefined;
+  const guidedRolePlayers = guidedInformation
+    ? game.players
+        .filter((player) => {
+          const assignment = game.assignments.find(
+            ({ playerId }) => playerId === player.id,
+          );
+          return (
+            TROUBLE_BREWING_ROLE_DEFINITIONS.find(
+              ({ id }) => id === assignment?.characterId,
+            )?.type === guidedInformation.roleType
+          );
+        })
+        .sort((left, right) => left.seatIndex - right.seatIndex)
+    : [];
+  const selectedInformationRolePlayer = game.players.find(
+    ({ id }) => id === informationRolePlayerId,
+  );
+  const selectedInformationDecoyPlayer = game.players.find(
+    ({ id }) => id === informationDecoyPlayerId,
+  );
+  const selectedInformationAssignment = game.assignments.find(
+    ({ playerId }) => playerId === informationRolePlayerId,
+  );
+  const selectedInformationRole = TROUBLE_BREWING_ROLE_DEFINITIONS.find(
+    ({ id }) => id === selectedInformationAssignment?.characterId,
+  );
+  const suggestedChefPairCount =
+    active?.characterId === 'chef' ? countAdjacentEvilPairs(game) : null;
+  const guidedResultSummary =
+    guidedInformation === undefined
+      ? ''
+      : guidedInformation.roleType === 'outsider' && librarianNoOutsider
+        ? '图书管理员信息：本局没有外来者。'
+        : selectedInformationRolePlayer &&
+            selectedInformationDecoyPlayer &&
+            selectedInformationRole
+          ? `${guidedInformation.label}信息：${[
+              selectedInformationRolePlayer,
+              selectedInformationDecoyPlayer,
+            ]
+              .sort((left, right) => left.seatIndex - right.seatIndex)
+              .map((player) => `${player.seatIndex + 1}号 ${player.name}`)
+              .join('、')} 中有一位是${selectedInformationRole.name}。`
+          : '';
+  const chefResultSummary =
+    active?.characterId === 'chef' && chefPairCount !== null
+      ? `厨师信息：相邻邪恶玩家共有 ${chefPairCount} 对。`
+      : '';
+  const finalResultSummary = guidedInformation
+    ? guidedResultSummary
+    : active?.characterId === 'chef'
+      ? chefResultSummary
+      : resultSummary;
   const actor = active
     ? game.players.find(({ id }) => id === active.playerId)
     : undefined;
@@ -1463,6 +1656,7 @@ function NightWorkbench({
   const attackAutomaticallyFails =
     Boolean(actorAssignment?.status.drunk) ||
     Boolean(actorAssignment?.status.poisoned) ||
+    attackedAssignment?.status.alive === false ||
     Boolean(attackedAssignment?.status.protected) ||
     (attackedAssignment?.characterId === 'soldier' &&
       !attackedAssignment.status.drunk &&
@@ -1513,11 +1707,20 @@ function NightWorkbench({
     isImpAttack &&
     deathResolution === active?.playerId &&
     successorCandidates.length > 0;
+  const targetCountValid =
+    targeting === undefined ||
+    (targetIds.length >= targeting.minTargets &&
+      targetIds.length <= targeting.maxTargets);
+  const resultReady =
+    ability?.playerResult !== 'storyteller' ||
+    Boolean(finalResultSummary.trim());
   const canComplete =
-    !isImpAttack ||
-    (targetIds.length === 1 &&
-      Boolean(deathResolution) &&
-      (!requiresSuccessor || Boolean(newDemonPlayerId)));
+    targetCountValid &&
+    resultReady &&
+    (!isImpAttack ||
+      (targetIds.length === 1 &&
+        Boolean(deathResolution) &&
+        (!requiresSuccessor || Boolean(newDemonPlayerId))));
   return (
     <section className="tool-workspace night-workspace">
       <header>
@@ -1574,7 +1777,13 @@ function NightWorkbench({
                     <strong>{definition?.name ?? step.characterId}</strong>
                     <small>{player?.name ?? step.playerId}</small>
                   </span>
-                  <i>{step.status}</i>
+                  <i>
+                    {step.status === 'active' &&
+                    (step.playerSubmittedAt ||
+                      step.resultSummary === '玩家已提交目标，等待说书人确认。')
+                      ? '玩家已提交'
+                      : step.status}
+                  </i>
                 </article>
               );
             })}
@@ -1585,12 +1794,7 @@ function NightWorkbench({
                 <span>☾</span>
                 <h3>本夜流程已完成</h3>
                 {game.nightQueue.length > 0 && (
-                  <button
-                    className="advance-button"
-                    onClick={() =>
-                      send({ type: 'ADVANCE_PHASE', to: 'day_discussion' })
-                    }
-                  >
+                  <button className="advance-button" onClick={onDawn}>
                     宣布黎明，进入白天 <span>→</span>
                   </button>
                 )}
@@ -1605,32 +1809,51 @@ function NightWorkbench({
                     <li key={step}>{step}</li>
                   ))}
                 </ol>
+                {playerHasSubmitted && (
+                  <div className="storyteller-player-submission" role="status">
+                    <strong>
+                      {active.characterId === 'spy'
+                        ? '间谍已查看魔典并提交'
+                        : '玩家已提交夜间行动'}
+                    </strong>
+                    <span>
+                      {active.characterId === 'spy'
+                        ? '玩家端确认已阅读完整魔典，正在等待你完成并唤醒下一位。'
+                        : '玩家端选择已同步到这里，请核对后完成本步骤。'}
+                    </span>
+                  </div>
+                )}
                 {legalTargets.size > 0 && (
                   <div className="night-targets">
                     {game.players
                       .filter(({ id }) => legalTargets.has(id))
-                      .map((player) => (
-                        <button
-                          className={
-                            targetIds.includes(player.id) ? 'selected' : ''
-                          }
-                          key={player.id}
-                          onClick={() =>
-                            setTargetIds((current) => {
-                              if (isImpAttack) {
-                                return current.includes(player.id)
-                                  ? []
-                                  : [player.id];
-                              }
-                              return current.includes(player.id)
-                                ? current.filter((id) => id !== player.id)
-                                : [...current, player.id];
-                            })
-                          }
-                        >
-                          {player.seatIndex + 1} · {player.name}
-                        </button>
-                      ))}
+                      .map((player) => {
+                        const selected = targetIds.includes(player.id);
+                        return (
+                          <button
+                            className={selected ? 'selected' : ''}
+                            disabled={
+                              !selected &&
+                              targetIds.length >= (targeting?.maxTargets ?? 0)
+                            }
+                            key={player.id}
+                            onClick={() =>
+                              setTargetIds((current) =>
+                                current.includes(player.id)
+                                  ? current.filter((id) => id !== player.id)
+                                  : [...current, player.id],
+                              )
+                            }
+                          >
+                            {player.seatIndex + 1} · {player.name}
+                            {!game.assignments.find(
+                              ({ playerId }) => playerId === player.id,
+                            )?.status.alive
+                              ? '（已死亡）'
+                              : ''}
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
                 {isImpAttack && attackedPlayer && (
@@ -1685,11 +1908,211 @@ function NightWorkbench({
                     )}
                   </section>
                 )}
-                <textarea
-                  placeholder="结果摘要或给出的信息"
-                  value={resultSummary}
-                  onChange={(event) => setResultSummary(event.target.value)}
-                />
+                {guidedInformation && (
+                  <section className="guided-information">
+                    <header>
+                      <div>
+                        <strong>选择展示给玩家的信息</strong>
+                        <small>第一排确定真实角色，第二排选择干扰玩家</small>
+                      </div>
+                    </header>
+                    {guidedInformation.roleType === 'outsider' && (
+                      <label className="no-outsider-toggle">
+                        <input
+                          type="checkbox"
+                          checked={librarianNoOutsider}
+                          onChange={(event) => {
+                            setLibrarianNoOutsider(event.target.checked);
+                            if (event.target.checked) {
+                              setInformationRolePlayerId('');
+                              setInformationDecoyPlayerId('');
+                            }
+                          }}
+                        />
+                        本局没有外来者
+                      </label>
+                    )}
+                    {!librarianNoOutsider && (
+                      <>
+                        <section className="guided-choice-row">
+                          <div className="guided-choice-heading">
+                            <b>
+                              第一排：选择一名
+                              {guidedInformation.roleTypeLabel}玩家
+                            </b>
+                            <small>该玩家的角色将作为展示角色</small>
+                          </div>
+                          <div className="guided-player-grid">
+                            {guidedRolePlayers.map((player) => {
+                              const selected =
+                                informationRolePlayerId === player.id;
+                              const assignment = game.assignments.find(
+                                ({ playerId }) => playerId === player.id,
+                              );
+                              const assignedRole =
+                                TROUBLE_BREWING_ROLE_DEFINITIONS.find(
+                                  ({ id }) => id === assignment?.characterId,
+                                );
+                              return (
+                                <button
+                                  type="button"
+                                  className={selected ? 'selected' : ''}
+                                  key={player.id}
+                                  onClick={() => {
+                                    setInformationRolePlayerId((current) =>
+                                      current === player.id ? '' : player.id,
+                                    );
+                                    if (
+                                      informationDecoyPlayerId === player.id
+                                    ) {
+                                      setInformationDecoyPlayerId('');
+                                    }
+                                  }}
+                                >
+                                  <span>
+                                    {player.seatIndex + 1} · {player.name}
+                                  </span>
+                                  <small>
+                                    {assignedRole?.name ??
+                                      assignment?.characterId ??
+                                      '未分配'}
+                                  </small>
+                                </button>
+                              );
+                            })}
+                            {guidedRolePlayers.length === 0 && (
+                              <p className="guided-empty">
+                                本局没有
+                                {guidedInformation.roleTypeLabel}玩家。
+                              </p>
+                            )}
+                          </div>
+                        </section>
+                        <section className="guided-choice-row">
+                          <div className="guided-choice-heading">
+                            <b>第二排：从所有玩家中选择干扰项</b>
+                            <small>不能与第一排选择同一名玩家</small>
+                          </div>
+                          <div className="guided-player-grid">
+                            {game.players
+                              .slice()
+                              .sort(
+                                (left, right) =>
+                                  left.seatIndex - right.seatIndex,
+                              )
+                              .map((player) => {
+                                const selected =
+                                  informationDecoyPlayerId === player.id;
+                                const assignment = game.assignments.find(
+                                  ({ playerId }) => playerId === player.id,
+                                );
+                                const assignedRole =
+                                  TROUBLE_BREWING_ROLE_DEFINITIONS.find(
+                                    ({ id }) => id === assignment?.characterId,
+                                  );
+                                return (
+                                  <button
+                                    type="button"
+                                    className={selected ? 'selected' : ''}
+                                    disabled={
+                                      informationRolePlayerId === player.id
+                                    }
+                                    key={player.id}
+                                    onClick={() =>
+                                      setInformationDecoyPlayerId((current) =>
+                                        current === player.id ? '' : player.id,
+                                      )
+                                    }
+                                  >
+                                    <span>
+                                      {player.seatIndex + 1} · {player.name}
+                                    </span>
+                                    <small>
+                                      {assignedRole?.name ??
+                                        assignment?.characterId ??
+                                        '未分配'}
+                                    </small>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </section>
+                      </>
+                    )}
+                    <div
+                      className={
+                        guidedResultSummary
+                          ? 'guided-information-preview ready'
+                          : 'guided-information-preview'
+                      }
+                    >
+                      <small>玩家将收到</small>
+                      <p>
+                        {guidedResultSummary ||
+                          '完成上方选择后，这里会生成私密信息预览。'}
+                      </p>
+                    </div>
+                  </section>
+                )}
+                {active.characterId === 'chef' && (
+                  <section className="chef-information">
+                    <header>
+                      <div>
+                        <strong>选择告知厨师的配对数量</strong>
+                        <small>
+                          当前魔典按真实阵营计算：
+                          {suggestedChefPairCount ?? 0} 对
+                        </small>
+                      </div>
+                    </header>
+                    <div
+                      className="chef-pair-options"
+                      aria-label="相邻邪恶玩家配对数量"
+                    >
+                      {[0, 1, 2, 3, 4].map((count) => (
+                        <button
+                          type="button"
+                          className={chefPairCount === count ? 'selected' : ''}
+                          key={count}
+                          onClick={() => setChefPairCount(count)}
+                        >
+                          <b>{count}</b>
+                          <span>对</span>
+                          {count === suggestedChefPairCount && (
+                            <small>当前阵营建议</small>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="chef-information-note">
+                      如厨师醉酒、中毒，或你决定让间谍、隐士进行不同登记，可选择其他数字。
+                    </p>
+                    <div
+                      className={
+                        chefResultSummary
+                          ? 'guided-information-preview ready'
+                          : 'guided-information-preview'
+                      }
+                    >
+                      <small>厨师玩家将收到</small>
+                      <p>
+                        {chefResultSummary ||
+                          '选择数字后，这里会生成私密信息预览。'}
+                      </p>
+                    </div>
+                  </section>
+                )}
+                {!guidedInformation && active.characterId !== 'chef' && (
+                  <textarea
+                    placeholder={
+                      ability?.playerResult === 'storyteller'
+                        ? '必填：发送给该玩家的夜间结果'
+                        : '说书人备注（不会自动发送给玩家）'
+                    }
+                    value={resultSummary}
+                    onChange={(event) => setResultSummary(event.target.value)}
+                  />
+                )}
                 <div>
                   <button
                     onClick={() =>
@@ -1698,7 +2121,7 @@ function NightWorkbench({
                         stepId: active.id,
                         status: 'skipped',
                         targetIds,
-                        resultSummary,
+                        resultSummary: guidedInformation ? '' : resultSummary,
                       })
                     }
                   >
@@ -1720,14 +2143,14 @@ function NightWorkbench({
                                   ? {
                                       type: 'no_death' as const,
                                       reason:
-                                        resultSummary.trim() ||
+                                        finalResultSummary.trim() ||
                                         '说书人确认本夜无人死亡',
                                     }
                                   : {
                                       type: 'death' as const,
                                       playerId: deathResolution,
                                       reason:
-                                        resultSummary.trim() ||
+                                        finalResultSummary.trim() ||
                                         '夜间遭到恶魔攻击',
                                       ...(newDemonPlayerId
                                         ? { newDemonPlayerId }
@@ -1735,7 +2158,7 @@ function NightWorkbench({
                                     },
                             }
                           : {}),
-                        resultSummary,
+                        resultSummary: finalResultSummary,
                       })
                     }
                   >

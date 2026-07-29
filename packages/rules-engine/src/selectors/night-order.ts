@@ -7,6 +7,7 @@ import type {
 
 import {
   TROUBLE_BREWING_ROLES,
+  getDrunkPerceivedRole,
   type TroubleBrewingAbilityModel,
 } from '../scripts/trouble-brewing.js';
 
@@ -66,7 +67,9 @@ export function calculateNightOrder(
 
   return state.assignments
     .flatMap((assignment): NightOrderEntry[] => {
-      const config = configById.get(assignment.characterId);
+      const effectiveCharacterId =
+        getDrunkPerceivedRole(assignment)?.id ?? assignment.characterId;
+      const config = configById.get(effectiveCharacterId);
       const order = config?.[orderKey];
       if (
         config === undefined ||

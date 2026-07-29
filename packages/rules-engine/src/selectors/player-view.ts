@@ -6,6 +6,10 @@ import type {
   PlayerId,
 } from '@clocktower/shared';
 
+import {
+  getDrunkPerceivedRole,
+  getTroubleBrewingRole,
+} from '../scripts/trouble-brewing.js';
 import { getLegalNightTargets } from '../validators/action-validator.js';
 
 export type PlayerPublicReference = {
@@ -43,11 +47,29 @@ export type PlayerReview = {
   }>;
 };
 
+export type SpyGrimoireSeat = {
+  playerId: PlayerId;
+  playerName: string;
+  seatIndex: number;
+  characterId: string;
+  alignment: Alignment;
+  status: {
+    alive: boolean;
+    drunk: boolean;
+    poisoned: boolean;
+    protected: boolean;
+    deadVoteAvailable: boolean;
+  };
+  effects: string[];
+  reminders: string[];
+};
+
 /**
  * The only state shape that may cross the server-to-player boundary.
  *
  * Deliberately absent: assignments for other players, storyteller-only events,
- * reminders, drunk/poison/protection flags and the complete GameState.
+ * reminders, drunk/poison/protection flags and the complete GameState, except
+ * for the temporary grimoire projection granted by an active Spy night step.
  */
 export type PlayerView = {
   roomId: string;
@@ -82,8 +104,21 @@ export type PlayerView = {
   nightRequest?: {
     stepId: string;
     characterId: string;
+    interaction: 'choose' | 'information' | 'grimoire';
+    minTargets: number;
+    maxTargets: number;
     legalTargets: PlayerPublicReference[];
     selectedTargetIds: PlayerId[];
+    submitted: boolean;
+  };
+  evilTeamInfo?: {
+    demon?: PlayerPublicReference;
+    minions: PlayerPublicReference[];
+    demonBluffs: string[];
+  };
+  spyGrimoire?: {
+    seats: SpyGrimoireSeat[];
+    demonBluffs: string[];
   };
   review?: PlayerReview;
 };
@@ -123,6 +158,12 @@ export function selectPlayerView(
   const ownAssignment = state.assignments.find(
     (candidate) => candidate.playerId === playerId,
   );
+  const perceivedDrunkRole = ownAssignment
+    ? getDrunkPerceivedRole(ownAssignment)
+    : undefined;
+  const ownRole = ownAssignment
+    ? getTroubleBrewingRole(ownAssignment.characterId)
+    : undefined;
   const status = ownAssignment?.status ?? {
     alive: true,
     deadVoteAvailable: false,
@@ -135,6 +176,19 @@ export function selectPlayerView(
   const nominationOpen = state.phase === 'nomination';
   const voteOpen = state.phase === 'voting' && activeNomination !== undefined;
   const mayVoteWhileDead = !status.alive && status.deadVoteAvailable;
+  const butlerMasterId = (ownAssignment?.effects ?? []).find(
+    ({ kind, sourceRoleId, sourcePlayerId }) =>
+      kind === 'master' &&
+      sourceRoleId === 'butler' &&
+      sourcePlayerId !== undefined,
+  )?.sourcePlayerId;
+  const butlerMasterHasVoted =
+    !status.alive ||
+    butlerMasterId === undefined ||
+    (activeNomination?.votes.some(
+      ({ voterId, value }) => voterId === butlerMasterId && value,
+    ) ??
+      false);
 
   const visibleEvents = state.events.filter((event) =>
     isVisibleToPlayer(event, playerId),
@@ -159,12 +213,44 @@ export function selectPlayerView(
   const legalNightTargetIds = nightStep
     ? new Set(getLegalNightTargets(state, playerId))
     : new Set<PlayerId>();
+  const nightAbility = nightStep
+    ? getTroubleBrewingRole(nightStep.characterId)?.abilityModel
+    : undefined;
+  const nightTargeting = nightAbility?.targeting;
+  const mayViewSpyGrimoire =
+    nightStep?.characterId === 'spy' && ownAssignment?.characterId === 'spy';
   const gameEnd = [...state.events]
     .reverse()
     .find(
       (event): event is Extract<GameEvent, { type: 'GAME_ENDED' }> =>
         event.type === 'GAME_ENDED',
     );
+  const playerReference = (assignmentPlayerId: PlayerId) => {
+    const referencedPlayer = state.players.find(
+      ({ id }) => id === assignmentPlayerId,
+    );
+    if (!referencedPlayer) return undefined;
+    return {
+      id: referencedPlayer.id,
+      name: referencedPlayer.name,
+      seatIndex: referencedPlayer.seatIndex,
+      alive:
+        state.assignments.find(
+          ({ playerId: candidateId }) => candidateId === referencedPlayer.id,
+        )?.status.alive ?? true,
+    };
+  };
+  const evilInfoAvailable =
+    ownRole?.alignment === 'evil' &&
+    state.phase !== 'lobby' &&
+    state.phase !== 'setup_players' &&
+    state.phase !== 'assign_characters';
+  const demonAssignment = state.assignments.find(
+    ({ characterId }) => getTroubleBrewingRole(characterId)?.type === 'demon',
+  );
+  const minionAssignments = state.assignments.filter(
+    ({ characterId }) => getTroubleBrewingRole(characterId)?.type === 'minion',
+  );
 
   return {
     roomId: state.id,
@@ -176,10 +262,11 @@ export function selectPlayerView(
       id: player.id,
       name: player.name,
       seatIndex: player.seatIndex,
-      ...(ownAssignment
+      ...(ownAssignment &&
+      (ownAssignment.characterId !== 'drunk' || perceivedDrunkRole)
         ? {
-            characterId: ownAssignment.characterId,
-            alignment: ownAssignment.alignment,
+            characterId: perceivedDrunkRole?.id ?? ownAssignment.characterId,
+            alignment: perceivedDrunkRole?.alignment ?? ownAssignment.alignment,
           }
         : {}),
       alive: status.alive,
@@ -203,12 +290,17 @@ export function selectPlayerView(
         !nominationOpen ? '当前不是提名阶段' : '死亡玩家不能发起提名',
       ),
       vote: permission(
-        voteOpen && !hasVoted && (status.alive || mayVoteWhileDead),
+        voteOpen &&
+          !hasVoted &&
+          (status.alive || mayVoteWhileDead) &&
+          butlerMasterHasVoted,
         !voteOpen
           ? '当前没有进行中的投票'
           : hasVoted
             ? '你已完成本轮投票'
-            : '死亡投票权已使用',
+            : !butlerMasterHasVoted
+              ? '等待你的主人先投赞成票'
+              : '死亡投票权已使用',
       ),
     },
     ...(activeNomination
@@ -228,6 +320,14 @@ export function selectPlayerView(
           nightRequest: {
             stepId: nightStep.id,
             characterId: nightStep.characterId,
+            interaction:
+              nightAbility?.playerResult === 'grimoire'
+                ? 'grimoire'
+                : nightTargeting
+                  ? 'choose'
+                  : 'information',
+            minTargets: nightTargeting?.minTargets ?? 0,
+            maxTargets: nightTargeting?.maxTargets ?? 0,
             legalTargets: state.players
               .filter(({ id }) => legalNightTargetIds.has(id))
               .map((candidate) => ({
@@ -241,6 +341,89 @@ export function selectPlayerView(
                   )?.status.alive ?? true,
               })),
             selectedTargetIds: nightStep.targetIds,
+            submitted:
+              Boolean(nightStep.playerSubmittedAt) ||
+              nightStep.resultSummary ===
+              '玩家已提交目标，等待说书人确认。',
+          },
+        }
+      : {}),
+    ...(evilInfoAvailable
+      ? {
+          evilTeamInfo: {
+            ...(demonAssignment
+              ? { demon: playerReference(demonAssignment.playerId) }
+              : {}),
+            minions: minionAssignments
+              .map(({ playerId: minionPlayerId }) =>
+                playerReference(minionPlayerId),
+              )
+              .filter(
+                (
+                  reference,
+                ): reference is NonNullable<typeof reference> =>
+                  reference !== undefined,
+              ),
+            demonBluffs:
+              ownRole?.type === 'demon'
+                ? (state.demonBluffs ?? []).map(
+                    ({ characterId }) => characterId,
+                  )
+                : [],
+          },
+        }
+      : {}),
+    ...(mayViewSpyGrimoire
+      ? {
+          spyGrimoire: {
+            seats: state.assignments
+              .map((assignment) => {
+                const assignedPlayer = state.players.find(
+                  ({ id }) => id === assignment.playerId,
+                );
+                if (!assignedPlayer) return undefined;
+                return {
+                  playerId: assignedPlayer.id,
+                  playerName: assignedPlayer.name,
+                  seatIndex: assignedPlayer.seatIndex,
+                  characterId: assignment.characterId,
+                  alignment: assignment.alignment,
+                  status: {
+                    alive: assignment.status.alive,
+                    drunk: assignment.status.drunk,
+                    poisoned: assignment.status.poisoned,
+                    protected: assignment.status.protected,
+                    deadVoteAvailable: assignment.status.deadVoteAvailable,
+                  },
+                  effects: [
+                    ...new Set([
+                      ...(assignment.effects ?? []).map(({ label }) => label),
+                      ...(state.effects ?? [])
+                        .filter(
+                          ({ playerId: effectPlayerId }) =>
+                            effectPlayerId === assignedPlayer.id,
+                        )
+                        .map(({ label }) => label),
+                    ]),
+                  ],
+                  reminders: [
+                    ...new Set([
+                      ...(assignment.reminders ?? []),
+                      ...(state.reminderTokens ?? [])
+                        .filter(
+                          ({ playerId: reminderPlayerId }) =>
+                            reminderPlayerId === assignedPlayer.id,
+                        )
+                        .map(({ label }) => label),
+                    ]),
+                  ],
+                };
+              })
+              .filter((seat): seat is SpyGrimoireSeat => seat !== undefined)
+              .sort((left, right) => left.seatIndex - right.seatIndex),
+            demonBluffs: (state.demonBluffs ?? []).map(
+              ({ characterId }) => characterId,
+            ),
           },
         }
       : {}),

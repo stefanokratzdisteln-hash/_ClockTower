@@ -1,6 +1,7 @@
 import type { GameState, PlayerId } from '@clocktower/shared';
 
 import {
+  getDrunkPerceivedRole,
   getTroubleBrewingRole,
   type TroubleBrewingAbilityModel,
 } from '../scripts/trouble-brewing.js';
@@ -22,7 +23,26 @@ function abilityForActor(
   );
   return assignment === undefined
     ? undefined
-    : getTroubleBrewingRole(assignment.characterId)?.abilityModel;
+    : (
+        getDrunkPerceivedRole(assignment) ??
+        getTroubleBrewingRole(assignment.characterId)
+      )?.abilityModel;
+}
+
+function actorWakesThisNight(
+  state: GameState,
+  actorPlayerId: PlayerId,
+  options: NightOrderOptions,
+): boolean {
+  return (
+    state.nightQueue.some(
+      ({ playerId, status }) =>
+        playerId === actorPlayerId && status === 'active',
+    ) ||
+    getNightOrder(state, options).some(
+      ({ playerId }) => playerId === actorPlayerId,
+    )
+  );
 }
 
 export function getLegalNightTargets(
@@ -31,11 +51,7 @@ export function getLegalNightTargets(
   options: NightOrderOptions = {},
 ): PlayerId[] {
   if (nightKindForPhase(state.phase) === undefined) return [];
-  if (
-    !getNightOrder(state, options).some(
-      ({ playerId }) => playerId === actorPlayerId,
-    )
-  ) {
+  if (!actorWakesThisNight(state, actorPlayerId, options)) {
     return [];
   }
   const targeting = abilityForActor(state, actorPlayerId)?.targeting;
@@ -76,18 +92,16 @@ export function validateNightAction(
     return { valid: false, errors };
   }
 
-  const role = getTroubleBrewingRole(assignment.characterId);
+  const role =
+    getDrunkPerceivedRole(assignment) ??
+    getTroubleBrewingRole(assignment.characterId);
   const ability = role?.abilityModel;
   const targeting = ability?.targeting;
   const expectedTiming =
     nightKind === 'firstNight' ? 'firstNight' : 'otherNight';
   if (ability === undefined || !ability.timing.includes(expectedTiming)) {
     errors.push(`${assignment.characterId} has no action this night.`);
-  } else if (
-    !getNightOrder(state, options).some(
-      ({ playerId }) => playerId === actorPlayerId,
-    )
-  ) {
+  } else if (!actorWakesThisNight(state, actorPlayerId, options)) {
     errors.push(`${assignment.characterId} does not wake in this night state.`);
   }
 

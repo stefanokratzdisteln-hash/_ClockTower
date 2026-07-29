@@ -15,6 +15,8 @@ import {
   endGame,
   executeNomination,
   givePrivateInfo,
+  getDrunkPerceivedRole,
+  getTroubleBrewingRole,
   manuallyAssignTroubleBrewingCharactersToGame,
   prepareNightQueue,
   removePlayer,
@@ -379,6 +381,20 @@ export class RoomService {
         break;
       case 'ADVANCE_PHASE':
         if (
+          state.phase === 'assign_characters' &&
+          command.to === 'private_reveal' &&
+          state.assignments.some(
+            (assignment) =>
+              assignment.characterId === 'drunk' &&
+              getDrunkPerceivedRole(assignment) === undefined,
+          )
+        ) {
+          throw new RoomServiceError(
+            'DRUNK_ROLE_REQUIRED',
+            '请先为酒鬼选择一个不在场镇民身份。',
+          );
+        }
+        if (
           (state.phase === 'first_night' || state.phase === 'night') &&
           command.to === 'day_discussion' &&
           (state.nightQueue.length === 0 ||
@@ -413,6 +429,27 @@ export class RoomService {
             .slice(0, 3)
             .map(({ id }) => id),
         );
+        for (const drunk of room.state.assignments.filter(
+          ({ characterId }) => characterId === 'drunk',
+        )) {
+          const perceivedRole = TROUBLE_BREWING_ROLE_DEFINITIONS.find(
+            (role) =>
+              role.type === 'townsfolk' &&
+              !room.state.assignments.some(
+                ({ characterId }) => characterId === role.id,
+              ),
+          );
+          if (perceivedRole) {
+            room.state = addStatusEffect(room.state, {
+              id: `effect-${randomUUID().slice(0, 8)}`,
+              playerId: drunk.playerId,
+              kind: 'custom',
+              label: '酒鬼伪装身份',
+              sourceRoleId: perceivedRole.id,
+              expiresAt: 'manual',
+            });
+          }
+        }
         break;
       case 'MANUAL_ASSIGN':
         room.state = manuallyAssignTroubleBrewingCharactersToGame(
@@ -421,12 +458,63 @@ export class RoomService {
         );
         break;
       case 'CHANGE_CHARACTER':
-        room.state = changeAssignedCharacter(
-          state,
-          command.playerId,
-          command.characterId,
-        );
+        {
+          const assignment = state.assignments.find(
+            ({ playerId }) => playerId === command.playerId,
+          );
+          let next = state;
+          if (
+            assignment?.characterId === 'drunk' &&
+            command.characterId !== 'drunk'
+          ) {
+            for (const effect of assignment.effects.filter(
+              ({ kind, label }) =>
+                kind === 'custom' && label === '酒鬼伪装身份',
+            )) {
+              next = removeStatusEffect(next, command.playerId, effect.id);
+            }
+          }
+          room.state = changeAssignedCharacter(
+            next,
+            command.playerId,
+            command.characterId,
+          );
+        }
         break;
+      case 'SET_DRUNK_PERCEIVED_ROLE': {
+        const assignment = state.assignments.find(
+          ({ playerId }) => playerId === command.playerId,
+        );
+        const perceivedRole = getTroubleBrewingRole(command.characterId);
+        if (
+          assignment?.characterId !== 'drunk' ||
+          perceivedRole?.type !== 'townsfolk' ||
+          state.assignments.some(
+            ({ characterId }) => characterId === command.characterId,
+          )
+        ) {
+          throw new RoomServiceError(
+            'INVALID_DRUNK_ROLE',
+            '酒鬼只能以一个不在场的镇民身份示人。',
+          );
+        }
+        let next = state;
+        for (const effect of assignment.effects.filter(
+          ({ kind, label }) =>
+            kind === 'custom' && label === '酒鬼伪装身份',
+        )) {
+          next = removeStatusEffect(next, command.playerId, effect.id);
+        }
+        room.state = addStatusEffect(next, {
+          id: `effect-${randomUUID().slice(0, 8)}`,
+          playerId: command.playerId,
+          kind: 'custom',
+          label: '酒鬼伪装身份',
+          sourceRoleId: command.characterId,
+          expiresAt: 'manual',
+        });
+        break;
+      }
       case 'SET_BLUFFS':
         room.state = setDemonBluffs(state, command.characterIds);
         break;
@@ -534,7 +622,79 @@ export class RoomService {
         room.state = prepareNightQueue(state);
         break;
       case 'UPDATE_NIGHT_STEP':
-        room.state = updateNightStep(state, command);
+        {
+          const nightStep = state.nightQueue.find(
+            ({ id }) => id === command.stepId,
+          );
+          room.state = updateNightStep(state, command);
+          const actorAssignment = nightStep
+            ? state.assignments.find(
+                ({ playerId }) => playerId === nightStep.playerId,
+              )
+            : undefined;
+          const chosenPlayerId = command.targetIds?.[0];
+          const chosenPlayer = chosenPlayerId
+            ? state.players.find(({ id }) => id === chosenPlayerId)
+            : undefined;
+          const abilityWorks =
+            nightStep &&
+            actorAssignment?.characterId === nightStep.characterId &&
+            !actorAssignment.status.drunk &&
+            !actorAssignment.status.poisoned;
+          if (
+            command.status === 'completed' &&
+            abilityWorks &&
+            chosenPlayerId &&
+            chosenPlayer
+          ) {
+            const effect =
+              nightStep.characterId === 'poisoner'
+                ? {
+                    playerId: chosenPlayerId,
+                    kind: 'poisoned' as const,
+                    label: '投毒者：中毒',
+                    sourceRoleId: 'poisoner',
+                    expiresAt: 'dusk' as const,
+                  }
+                : nightStep.characterId === 'monk'
+                  ? {
+                      playerId: chosenPlayerId,
+                      kind: 'protected' as const,
+                      label: '僧侣：保护',
+                      sourceRoleId: 'monk',
+                      expiresAt: 'dawn' as const,
+                    }
+                  : nightStep.characterId === 'butler'
+                    ? {
+                        playerId: nightStep.playerId,
+                        kind: 'master' as const,
+                        label: `主人：${chosenPlayer.name}`,
+                        sourceRoleId: 'butler',
+                        sourcePlayerId: chosenPlayerId,
+                        expiresAt: 'dusk' as const,
+                      }
+                    : undefined;
+            if (effect) {
+              room.state = addStatusEffect(room.state, {
+                id: `effect-${randomUUID().slice(0, 8)}`,
+                ...effect,
+              });
+            }
+          }
+          if (
+            nightStep &&
+            command.status === 'completed' &&
+            command.resultSummary?.trim() &&
+            getTroubleBrewingRole(nightStep.characterId)?.abilityModel
+              .playerResult === 'storyteller'
+          ) {
+            room.state = givePrivateInfo(room.state, {
+              playerId: nightStep.playerId,
+              infoKind: '夜间结果',
+              summary: command.resultSummary,
+            });
+          }
+        }
         break;
       case 'SEND_PRIVATE_INFO':
         room.state = givePrivateInfo(state, {
@@ -665,7 +825,7 @@ export class RoomService {
           stepId: command.stepId,
           status: 'active',
           targetIds: command.targetIds,
-          resultSummary: '玩家已提交目标，等待说书人确认。',
+          playerSubmitted: true,
         });
         break;
       }

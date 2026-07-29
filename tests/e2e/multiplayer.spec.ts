@@ -148,7 +148,10 @@ async function join(request: APIRequestContext, roomId: string, name: string) {
   return response.json() as Promise<{ playerId: string; token: string }>;
 }
 
-test('玩家权限隔离、投票同步和断线恢复', async ({ request }, testInfo) => {
+test('玩家权限隔离、黎明 CG、投票同步和断线恢复', async ({
+  page,
+  request,
+}, testInfo) => {
   const session = await createRoom(request, `SYNC-${testInfo.project.name}`);
   const storyteller = await RoomSocket.connect(session.roomId, session.token);
   let storytellerState = (await storyteller.snapshot()).payload!.state!;
@@ -161,6 +164,19 @@ test('玩家权限隔离、投票同步和断线恢复', async ({ request }, tes
   ).payload!.state!;
   const aliceSession = await join(request, session.roomId, '林');
   const bobSession = await join(request, session.roomId, '乔');
+  await page.addInitScript(
+    ({ roomId, token }) => {
+      localStorage.setItem(
+        `clocktower:player:${roomId}`,
+        JSON.stringify({ token }),
+      );
+    },
+    { roomId: session.roomId, token: aliceSession.token },
+  );
+  await page.goto(`/?room=${session.roomId}&player=1`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await expect(page.locator('.player-shell')).toBeVisible();
   const alice = await RoomSocket.connect(session.roomId, aliceSession.token);
   const bob = await RoomSocket.connect(session.roomId, bobSession.token);
   const aliceInitial = await alice.snapshot();
@@ -211,14 +227,25 @@ test('玩家权限隔离、投票同步和断线恢复', async ({ request }, tes
       )
     ).payload!.state!;
   }
-  for (const command of [
-    { type: 'ADVANCE_PHASE', to: 'day_discussion' },
-    { type: 'ADVANCE_PHASE', to: 'nomination' },
-  ]) {
-    storytellerState = (
-      await storyteller.command(command, storytellerState.version)
-    ).payload!.state!;
-  }
+  storytellerState = (
+    await storyteller.command(
+      { type: 'ADVANCE_PHASE', to: 'day_discussion' },
+      storytellerState.version,
+    )
+  ).payload!.state!;
+  await expect(page.locator('.dawn-cinematic')).toBeVisible();
+  await expect(page.locator('.dawn-cinematic > img')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByRole('button', { name: /跳过 CG|Skip CG/ }).click();
+  await expect(page.locator('.dawn-cinematic')).toBeHidden();
+
+  storytellerState = (
+    await storyteller.command(
+      { type: 'ADVANCE_PHASE', to: 'nomination' },
+      storytellerState.version,
+    )
+  ).payload!.state!;
 
   await alice.command({
     type: 'CREATE_NOMINATION',
@@ -384,6 +411,13 @@ test('F5 释放当前对局、返回根页面并允许复用房间码', async ({
 test('说书人可以手动添加玩家并载入 7 人测试阵容', async ({
   page,
 }, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Crypto.prototype, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
   const createFromRoot = async (suffix: string) => {
     await page.goto('/');
     await page

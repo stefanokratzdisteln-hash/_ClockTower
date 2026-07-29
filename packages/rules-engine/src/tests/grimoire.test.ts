@@ -142,6 +142,96 @@ describe('full grimoire state', () => {
     });
   });
 
+  it('inserts and activates the Ravenkeeper immediately after a night death', () => {
+    let state = { ...assignedGame(), phase: 'night' as const, dayNumber: 1 };
+    const imp = state.assignments.find(
+      ({ characterId }) => characterId === 'imp',
+    )!;
+    const ravenkeeper = state.assignments.find(
+      ({ playerId }) => playerId !== imp.playerId,
+    )!;
+    state.assignments = state.assignments.map((assignment) =>
+      assignment.playerId === ravenkeeper.playerId
+        ? { ...assignment, characterId: 'ravenkeeper', alignment: 'good' }
+        : assignment,
+    );
+    state = prepareNightQueue(state);
+    while (
+      state.nightQueue.find(({ status }) => status === 'active')?.characterId !==
+      'imp'
+    ) {
+      const active = state.nightQueue.find(
+        ({ status }) => status === 'active',
+      )!;
+      state = updateNightStep(state, {
+        stepId: active.id,
+        status: 'skipped',
+      });
+    }
+    const attack = state.nightQueue.find(({ status }) => status === 'active')!;
+    state = updateNightStep(state, {
+      stepId: attack.id,
+      status: 'completed',
+      targetIds: [ravenkeeper.playerId],
+      deathOutcome: {
+        type: 'death',
+        playerId: ravenkeeper.playerId,
+      },
+    });
+
+    expect(
+      state.nightQueue.find(({ status }) => status === 'active'),
+    ).toMatchObject({
+      playerId: ravenkeeper.playerId,
+      characterId: 'ravenkeeper',
+    });
+  });
+
+  it('does not wake a later-acting character after the Imp kills them', () => {
+    let state = { ...assignedGame(), phase: 'night' as const, dayNumber: 1 };
+    const imp = state.assignments.find(
+      ({ characterId }) => characterId === 'imp',
+    )!;
+    const victim = state.assignments.find(
+      ({ playerId }) => playerId !== imp.playerId,
+    )!;
+    state.assignments = state.assignments.map((assignment) =>
+      assignment.playerId === victim.playerId
+        ? { ...assignment, characterId: 'fortune_teller', alignment: 'good' }
+        : assignment,
+    );
+    state = prepareNightQueue(state);
+    while (
+      state.nightQueue.find(({ status }) => status === 'active')
+        ?.characterId !== 'imp'
+    ) {
+      const active = state.nightQueue.find(
+        ({ status }) => status === 'active',
+      )!;
+      state = updateNightStep(state, {
+        stepId: active.id,
+        status: 'skipped',
+      });
+    }
+    const attack = state.nightQueue.find(({ status }) => status === 'active')!;
+    state = updateNightStep(state, {
+      stepId: attack.id,
+      status: 'completed',
+      targetIds: [victim.playerId],
+      deathOutcome: { type: 'death', playerId: victim.playerId },
+    });
+
+    expect(
+      state.nightQueue.find(
+        ({ playerId, characterId }) =>
+          playerId === victim.playerId && characterId === 'fortune_teller',
+      )?.status,
+    ).toBe('skipped');
+    expect(
+      state.nightQueue.find(({ status }) => status === 'active')?.playerId,
+    ).not.toBe(victim.playerId);
+  });
+
   it('requires the Storyteller to confirm whether an Imp attack caused a death', () => {
     let state = { ...assignedGame(), phase: 'night' as const, dayNumber: 1 };
     state = prepareNightQueue(state);

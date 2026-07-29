@@ -39,6 +39,20 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return payload;
 }
 
+function createRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const randomValues = new Uint32Array(4);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(randomValues);
+    return Array.from(randomValues, (value) => value.toString(36)).join('-');
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function useRoomConnection() {
   const [role, setRole] = useState<Role>();
   const [roomId, setRoomId] = useState('');
@@ -191,7 +205,7 @@ export function useRoomConnection() {
     (command: StorytellerCommand | PlayerCommand) => {
       const message: ClientMessage = {
         type: 'COMMAND',
-        requestId: crypto.randomUUID(),
+        requestId: createRequestId(),
         command,
       };
       if (game) {
