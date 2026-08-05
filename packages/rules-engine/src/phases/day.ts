@@ -397,12 +397,17 @@ export function executeNomination(
     !nominee.status.drunk &&
     !nominee.status.poisoned
   ) {
+    const result = {
+      winningAlignment: 'evil' as const,
+      reason: 'The Saint died by execution.',
+      endedAt: occurredAt,
+    };
     return appendEvent(
-      { ...next, phase: 'game_over' },
+      { ...next, phase: 'game_over', result },
       {
         type: 'GAME_ENDED',
-        winningAlignment: 'evil',
-        reason: 'The Saint died by execution.',
+        winningAlignment: result.winningAlignment,
+        reason: result.reason,
       },
       { ...context, occurredAt },
     );
@@ -445,7 +450,11 @@ export function executeNomination(
   const winner = determineWinner(next);
   if (winner !== undefined) {
     next = appendEvent(
-      { ...next, phase: 'game_over' },
+      {
+        ...next,
+        phase: 'game_over',
+        result: { ...winner, endedAt: occurredAt },
+      },
       { type: 'GAME_ENDED', ...winner },
       { ...context, occurredAt },
     );

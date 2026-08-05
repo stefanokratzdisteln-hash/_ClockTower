@@ -286,6 +286,14 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
   const next = NEXT_PHASE[game.phase];
   const playerLink = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(game.id)}&player=1`;
   const send = (command: StorytellerCommand) => room.send(command);
+  const gameEndedEvent = [...game.events]
+    .reverse()
+    .find(
+      (event): event is Extract<GameEvent, { type: 'GAME_ENDED' }> =>
+        event.type === 'GAME_ENDED',
+    );
+  const endingWinner =
+    game.result?.winningAlignment ?? gameEndedEvent?.winningAlignment;
   const advancePhase = (to: GamePhase) => {
     if (
       (game.phase === 'first_night' || game.phase === 'night') &&
@@ -1240,9 +1248,9 @@ function StorytellerConsole({ room }: { room: RoomModel }) {
         />
       )}
       {activeTool === 'review' && <ReviewWorkspace game={game} send={send} />}
-      {game.phase === 'game_over' && game.result && (
+      {game.phase === 'game_over' && endingWinner && (
         <EndingCinematic
-          winner={game.result.winningAlignment}
+          winner={endingWinner}
           onContinue={() => send({ type: 'ADVANCE_PHASE', to: 'review' })}
         />
       )}

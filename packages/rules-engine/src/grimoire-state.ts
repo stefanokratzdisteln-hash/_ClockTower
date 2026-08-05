@@ -438,9 +438,7 @@ export function updateNightStep(
           ...(input.storytellerNote === undefined
             ? {}
             : { storytellerNote: input.storytellerNote }),
-          ...(input.playerSubmitted
-            ? { playerSubmittedAt: now }
-            : {}),
+          ...(input.playerSubmitted ? { playerSubmittedAt: now } : {}),
           ...(input.status === 'active' && !step.startedAt
             ? { startedAt: now }
             : {}),
@@ -464,9 +462,8 @@ export function updateNightStep(
   if (
     input.status === 'completed' &&
     nightDeathPlayerId !== undefined &&
-    state.assignments.find(
-      ({ playerId }) => playerId === nightDeathPlayerId,
-    )?.characterId === 'ravenkeeper' &&
+    state.assignments.find(({ playerId }) => playerId === nightDeathPlayerId)
+      ?.characterId === 'ravenkeeper' &&
     !queue.some(
       ({ playerId, characterId }) =>
         playerId === nightDeathPlayerId && characterId === 'ravenkeeper',
@@ -625,7 +622,11 @@ export function updateNightStep(
   const winner = determineWinner(next);
   if (winner) {
     next = appendEvent(
-      { ...next, phase: 'game_over' },
+      {
+        ...next,
+        phase: 'game_over',
+        result: { ...winner, endedAt: now },
+      },
       { type: 'GAME_ENDED', ...winner },
       { ...context, occurredAt: now, visibility: { scope: 'public' } },
     );

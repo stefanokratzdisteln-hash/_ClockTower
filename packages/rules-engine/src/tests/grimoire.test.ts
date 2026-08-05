@@ -142,6 +142,75 @@ describe('full grimoire state', () => {
     });
   });
 
+  it('stores the result when a night death immediately ends the game', () => {
+    const endedAt = '2026-07-30T14:30:00.000Z';
+    let state = { ...assignedGame(), phase: 'night' as const, dayNumber: 1 };
+    const imp = state.assignments.find(
+      ({ characterId }) => characterId === 'imp',
+    )!;
+    const victim = state.assignments.find(
+      ({ playerId, characterId }) =>
+        playerId !== imp.playerId &&
+        characterId !== 'mayor' &&
+        characterId !== 'soldier',
+    )!;
+    const survivor = state.assignments.find(
+      ({ playerId }) =>
+        playerId !== imp.playerId && playerId !== victim.playerId,
+    )!;
+    const livingPlayerIds = new Set([
+      imp.playerId,
+      victim.playerId,
+      survivor.playerId,
+    ]);
+    state = {
+      ...state,
+      assignments: state.assignments.map((assignment) => ({
+        ...assignment,
+        status: {
+          ...assignment.status,
+          alive: livingPlayerIds.has(assignment.playerId),
+        },
+      })),
+    };
+    state = prepareNightQueue(state);
+    while (
+      state.nightQueue.find(({ status }) => status === 'active')
+        ?.characterId !== 'imp'
+    ) {
+      const active = state.nightQueue.find(
+        ({ status }) => status === 'active',
+      )!;
+      state = updateNightStep(state, {
+        stepId: active.id,
+        status: 'skipped',
+      });
+    }
+    const attack = state.nightQueue.find(({ status }) => status === 'active')!;
+
+    state = updateNightStep(
+      state,
+      {
+        stepId: attack.id,
+        status: 'completed',
+        targetIds: [victim.playerId],
+        deathOutcome: { type: 'death', playerId: victim.playerId },
+      },
+      { occurredAt: endedAt },
+    );
+
+    expect(state.phase).toBe('game_over');
+    expect(state.result).toEqual({
+      winningAlignment: 'evil',
+      reason: 'Two or fewer players remain alive.',
+      endedAt,
+    });
+    expect(state.events.at(-1)).toMatchObject({
+      type: 'GAME_ENDED',
+      winningAlignment: 'evil',
+    });
+  });
+
   it('inserts and activates the Ravenkeeper immediately after a night death', () => {
     let state = { ...assignedGame(), phase: 'night' as const, dayNumber: 1 };
     const imp = state.assignments.find(
@@ -157,8 +226,8 @@ describe('full grimoire state', () => {
     );
     state = prepareNightQueue(state);
     while (
-      state.nightQueue.find(({ status }) => status === 'active')?.characterId !==
-      'imp'
+      state.nightQueue.find(({ status }) => status === 'active')
+        ?.characterId !== 'imp'
     ) {
       const active = state.nightQueue.find(
         ({ status }) => status === 'active',

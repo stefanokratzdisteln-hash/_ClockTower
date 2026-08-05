@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 const ENDING_IMAGES = {
   good: new URL('../../../../public/ending/HE.png', import.meta.url).href,
   evil: new URL('../../../../public/ending/BE.png', import.meta.url).href,
@@ -10,6 +12,17 @@ type EndingCinematicProps = {
 
 export function EndingCinematic({ winner, onContinue }: EndingCinematicProps) {
   const goodEnding = winner === 'good';
+
+  useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
 
   return (
     <section

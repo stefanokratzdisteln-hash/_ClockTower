@@ -120,6 +120,10 @@ describe('day nominations and voting', () => {
       type: 'GAME_ENDED',
       winningAlignment: 'evil',
     });
+    expect(state.result).toMatchObject({
+      winningAlignment: 'evil',
+      reason: 'The Saint died by execution.',
+    });
   });
 
   it('promotes a healthy Scarlet Woman when the Demon dies with five alive', () => {
@@ -311,6 +315,11 @@ describe('execution and basic win conditions', () => {
     expect(next.events.at(-1)).toMatchObject({
       winningAlignment: 'good',
       reason: 'The Demon is dead.',
+    });
+    expect(next.result).toEqual({
+      winningAlignment: 'good',
+      reason: 'The Demon is dead.',
+      endedAt: timestamp,
     });
   });
 

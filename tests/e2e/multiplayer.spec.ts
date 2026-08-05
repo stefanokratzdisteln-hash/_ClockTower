@@ -482,3 +482,95 @@ test('玩家不扫码也可以输入房间码和昵称手动加入', async ({
   await expect(playerPage.locator('.player-topbar')).toBeVisible();
   await expect(page.locator('.mp-roster')).toContainText('手动加入玩家');
 });
+
+for (const ending of [
+  {
+    alignment: 'good' as const,
+    label: '善良阵营获胜',
+    imageName: 'HE',
+  },
+  {
+    alignment: 'evil' as const,
+    label: '邪恶阵营获胜',
+    imageName: 'BE',
+  },
+]) {
+  test(`说书人端结束后立即展示${ending.label} CG 并可进入复盘`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    test.setTimeout(45_000);
+    const session = await createRoom(
+      request,
+      `ENDING-${ending.alignment}-${testInfo.project.name}`,
+    );
+    const storyteller = await RoomSocket.connect(session.roomId, session.token);
+    const initial = (await storyteller.snapshot()).payload!.state!;
+
+    await storyteller.command(
+      {
+        type: 'END_GAME',
+        winningAlignment: ending.alignment,
+        reason: '端到端结局 CG 验证',
+      },
+      initial.version,
+    );
+    await page.addInitScript(({ roomId, token }) => {
+      localStorage.setItem(
+        `clocktower:storyteller:${roomId}`,
+        JSON.stringify({ role: 'storyteller', roomId, token }),
+      );
+    }, session);
+    await page.goto(`/?room=${session.roomId}`, {
+      waitUntil: 'domcontentloaded',
+    });
+
+    const cinematic = page.locator(`.ending-cinematic.${ending.alignment}`);
+    await expect(cinematic).toBeVisible();
+    await expect(cinematic.getByText(ending.label)).toBeVisible();
+    await expect(cinematic.locator('img')).toHaveAttribute(
+      'src',
+      new RegExp(`${ending.imageName}-[^/]+\\.png$`),
+    );
+    const cgLayout = await cinematic.locator('img').evaluate((image) => {
+      const style = getComputedStyle(image);
+      return {
+        position: style.position,
+        objectFit: style.objectFit,
+        left: image.offsetLeft,
+        top: image.offsetTop,
+        width: image.clientWidth,
+        height: image.clientHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(cgLayout).toEqual({
+      position: 'absolute',
+      objectFit: 'contain',
+      left: 0,
+      top: 0,
+      width: cgLayout.viewportWidth,
+      height: cgLayout.viewportHeight,
+      viewportWidth: cgLayout.viewportWidth,
+      viewportHeight: cgLayout.viewportHeight,
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          html: getComputedStyle(document.documentElement).overflow,
+          body: getComputedStyle(document.body).overflow,
+        })),
+      )
+      .toEqual({ html: 'hidden', body: 'hidden' });
+
+    await cinematic.getByRole('button', { name: /进入复盘/ }).click();
+    await expect(cinematic).toBeHidden();
+    await expect(page.locator('.mp-shell')).toHaveAttribute(
+      'data-phase',
+      'review',
+    );
+    await expect(page.locator('.mp-hero h1')).toHaveText('复盘');
+    storyteller.close();
+  });
+}
